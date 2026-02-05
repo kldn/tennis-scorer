@@ -8,3 +8,7 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+libc = "0.2"
+
+[build-dependencies]
+cbindgen = "0.26"

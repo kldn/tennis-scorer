@@ -5,6 +5,7 @@ mod tiebreak;
 mod set;
 mod match_state;
 mod history;
+pub mod ffi;
 
 pub use types::{Player, Point};
 pub use config::MatchConfig;
