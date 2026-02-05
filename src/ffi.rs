@@ -41,6 +41,7 @@ pub struct MatchScore {
     pub game_state: u8,
     pub is_tiebreak: bool,
     pub winner: u8,
+    pub deuce_count: u8,
 }
 
 // ============================================================================
@@ -233,6 +234,7 @@ fn build_match_score(state: &MatchState) -> MatchScore {
                 game_state: GAME_STATE_COMPLETED,
                 is_tiebreak: false,
                 winner: winner_code,
+                deuce_count: 0,
             }
         }
         MatchState::Playing {
@@ -242,7 +244,7 @@ fn build_match_score(state: &MatchState) -> MatchScore {
             ..
         } => {
             let current_set = sets.last().unwrap();
-            let (p1_games, p2_games, game_state, p1_points, p2_points, is_tiebreak) =
+            let (p1_games, p2_games, game_state, p1_points, p2_points, is_tiebreak, deuce_count) =
                 extract_set_info(current_set);
 
             MatchScore {
@@ -255,18 +257,19 @@ fn build_match_score(state: &MatchState) -> MatchScore {
                 game_state,
                 is_tiebreak,
                 winner: 0,
+                deuce_count,
             }
         }
     }
 }
 
-fn extract_set_info(set: &SetState) -> (u8, u8, u8, u8, u8, bool) {
+fn extract_set_info(set: &SetState) -> (u8, u8, u8, u8, u8, bool, u8) {
     match set {
         SetState::Completed {
             player1_games,
             player2_games,
             ..
-        } => (*player1_games, *player2_games, GAME_STATE_COMPLETED, 0, 0, false),
+        } => (*player1_games, *player2_games, GAME_STATE_COMPLETED, 0, 0, false, 0),
         SetState::Playing {
             player1_games,
             player2_games,
@@ -280,24 +283,24 @@ fn extract_set_info(set: &SetState) -> (u8, u8, u8, u8, u8, bool) {
                 } else {
                     GAME_STATE_PLAYING
                 };
-                (*player1_games, *player2_games, game_state, p1_pts, p2_pts, true)
+                (*player1_games, *player2_games, game_state, p1_pts, p2_pts, true, 0)
             } else {
-                let (game_state, p1_pts, p2_pts) = extract_game_info(current_game);
-                (*player1_games, *player2_games, game_state, p1_pts, p2_pts, false)
+                let (game_state, p1_pts, p2_pts, deuce_count) = extract_game_info(current_game);
+                (*player1_games, *player2_games, game_state, p1_pts, p2_pts, false, deuce_count)
             }
         }
     }
 }
 
-fn extract_game_info(game: &GameState) -> (u8, u8, u8) {
+fn extract_game_info(game: &GameState) -> (u8, u8, u8, u8) {
     match game {
         GameState::Points { player1, player2 } => {
-            (GAME_STATE_PLAYING, point_to_number(*player1), point_to_number(*player2))
+            (GAME_STATE_PLAYING, point_to_number(*player1), point_to_number(*player2), 0)
         }
-        GameState::Deuce => (GAME_STATE_DEUCE, 40, 40),
-        GameState::Advantage(Player::Player1) => (GAME_STATE_ADVANTAGE_P1, 0, 0),
-        GameState::Advantage(Player::Player2) => (GAME_STATE_ADVANTAGE_P2, 0, 0),
-        GameState::Completed(_) => (GAME_STATE_COMPLETED, 0, 0),
+        GameState::Deuce { count } => (GAME_STATE_DEUCE, 40, 40, *count),
+        GameState::Advantage { player: Player::Player1, deuce_count } => (GAME_STATE_ADVANTAGE_P1, 0, 0, *deuce_count),
+        GameState::Advantage { player: Player::Player2, deuce_count } => (GAME_STATE_ADVANTAGE_P2, 0, 0, *deuce_count),
+        GameState::Completed(_) => (GAME_STATE_COMPLETED, 0, 0, 0),
     }
 }
 
@@ -422,6 +425,39 @@ mod tests {
         let m = tennis_match_new_default();
         assert!(!tennis_match_is_complete(m));
         assert_eq!(tennis_match_get_winner(m), 0);
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_deuce_count() {
+        let m = tennis_match_new_default();
+
+        // Get to 40-40 (deuce)
+        // P1: 15, 30, 40
+        tennis_match_score_point(m, PLAYER_1);
+        tennis_match_score_point(m, PLAYER_1);
+        tennis_match_score_point(m, PLAYER_1);
+        // P2: 15, 30, 40
+        tennis_match_score_point(m, PLAYER_2);
+        tennis_match_score_point(m, PLAYER_2);
+        tennis_match_score_point(m, PLAYER_2);
+
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.game_state, GAME_STATE_DEUCE);
+        assert_eq!(score.deuce_count, 1);
+
+        // P1 advantage
+        tennis_match_score_point(m, PLAYER_1);
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.game_state, GAME_STATE_ADVANTAGE_P1);
+        assert_eq!(score.deuce_count, 1);
+
+        // Back to deuce (count = 2)
+        tennis_match_score_point(m, PLAYER_2);
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.game_state, GAME_STATE_DEUCE);
+        assert_eq!(score.deuce_count, 2);
+
         tennis_match_free(m);
     }
 }

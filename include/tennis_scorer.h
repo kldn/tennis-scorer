@@ -48,6 +48,7 @@ typedef struct {
     uint8_t game_state;      /* GAME_STATE_* constant */
     bool is_tiebreak;        /* True if currently in a tiebreak */
     uint8_t winner;          /* 0 = no winner, PLAYER_1 or PLAYER_2 */
+    uint8_t deuce_count;     /* Number of times deuce occurred in current game */
 } MatchScore;
 
 /* ============================================================================

@@ -24,6 +24,7 @@ struct Score {
     let isTiebreak: Bool
     let gameState: GameState
     let winner: Player?
+    let deuceCount: Int
 
     enum GameState {
         case playing
@@ -40,6 +41,9 @@ struct Score {
 
         switch gameState {
         case .deuce:
+            if deuceCount > 1 {
+                return "Deuce (\(deuceCount))"
+            }
             return "Deuce"
         case .advantagePlayer1:
             return "Ad - 40"
@@ -147,7 +151,8 @@ class TennisMatch: ObservableObject {
             player2Points: Int(ffiScore.player2_points),
             isTiebreak: ffiScore.is_tiebreak,
             gameState: gameState,
-            winner: winner
+            winner: winner,
+            deuceCount: Int(ffiScore.deuce_count)
         )
     }
 
@@ -161,7 +166,8 @@ class TennisMatch: ObservableObject {
             player2Points: 0,
             isTiebreak: false,
             gameState: .playing,
-            winner: nil
+            winner: nil,
+            deuceCount: 0
         )
     }
 }
