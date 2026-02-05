@@ -1,0 +1,14 @@
+# watchOS cross-compilation config
+
+[target.aarch64-apple-watchos]
+rustflags = ["-C", "link-arg=-mwatchos-version-min=10.0"]
+
+[target.aarch64-apple-watchos-sim]
+rustflags = ["-C", "link-arg=-mwatchos-simulator-version-min=10.0"]
+
+[target.arm64_32-apple-watchos]
+rustflags = ["-C", "link-arg=-mwatchos-version-min=10.0"]
+
+# For Tier 3 targets, we need to build std from source
+[unstable]
+build-std = ["std"]
