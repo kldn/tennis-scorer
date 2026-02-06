@@ -1,0 +1,8 @@
+target/
+WatchApp/
+.git/
+.env
+*.md
+docs/
+openspec/
+include/
