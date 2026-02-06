@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use crate::config::MatchConfig;
 use crate::game::GameState;
 use crate::history::MatchWithHistory;
@@ -26,6 +28,14 @@ pub const GAME_STATE_COMPLETED: u8 = 4;
 /// Opaque handle to a tennis match with history
 pub struct TennisMatch {
     inner: MatchWithHistory,
+}
+
+/// C-compatible point event with timestamp
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PointEvent {
+    pub player: u8,
+    pub timestamp: f64,
 }
 
 /// C-compatible score representation
@@ -209,8 +219,68 @@ pub extern "C" fn tennis_match_get_winner(match_ptr: *const TennisMatch) -> u8 {
 }
 
 // ============================================================================
+// Point Event Functions
+// ============================================================================
+
+/// Get the number of point events recorded in the match.
+/// Returns 0 if match_ptr is null.
+#[unsafe(no_mangle)]
+pub extern "C" fn tennis_match_get_point_count(match_ptr: *const TennisMatch) -> u32 {
+    if match_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let match_ref = &*match_ptr;
+        match_ref.inner.point_events().len() as u32
+    }
+}
+
+/// Fill a caller-provided buffer with point events.
+/// Returns false if match_ptr or buffer is null, or buffer_size is too small.
+#[unsafe(no_mangle)]
+pub extern "C" fn tennis_match_get_points(
+    match_ptr: *const TennisMatch,
+    buffer: *mut PointEvent,
+    buffer_size: u32,
+) -> bool {
+    if match_ptr.is_null() || buffer.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let match_ref = &*match_ptr;
+        let events = match_ref.inner.point_events();
+
+        if (buffer_size as usize) < events.len() {
+            return false;
+        }
+
+        for (i, (player, timestamp)) in events.iter().enumerate() {
+            let player_code = match player {
+                Player::Player1 => PLAYER_1,
+                Player::Player2 => PLAYER_2,
+            };
+            *buffer.add(i) = PointEvent {
+                player: player_code,
+                timestamp: system_time_to_epoch_secs(timestamp),
+            };
+        }
+    }
+
+    true
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
+
+fn system_time_to_epoch_secs(time: &SystemTime) -> f64 {
+    match time.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs_f64(),
+        Err(_) => 0.0,
+    }
+}
 
 fn build_match_score(state: &MatchState) -> MatchScore {
     match state {
@@ -425,6 +495,69 @@ mod tests {
         let m = tennis_match_new_default();
         assert!(!tennis_match_is_complete(m));
         assert_eq!(tennis_match_get_winner(m), 0);
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_get_point_count_empty() {
+        let m = tennis_match_new_default();
+        assert_eq!(tennis_match_get_point_count(m), 0);
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_get_point_count_after_scoring() {
+        let m = tennis_match_new_default();
+        tennis_match_score_point(m, PLAYER_1);
+        tennis_match_score_point(m, PLAYER_2);
+        tennis_match_score_point(m, PLAYER_1);
+        assert_eq!(tennis_match_get_point_count(m), 3);
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_get_points_fills_buffer() {
+        let m = tennis_match_new_default();
+        tennis_match_score_point(m, PLAYER_1);
+        tennis_match_score_point(m, PLAYER_2);
+
+        let mut buffer = [PointEvent::default(); 2];
+        assert!(tennis_match_get_points(m, buffer.as_mut_ptr(), 2));
+
+        assert_eq!(buffer[0].player, PLAYER_1);
+        assert_eq!(buffer[1].player, PLAYER_2);
+        assert!(buffer[0].timestamp > 0.0);
+        assert!(buffer[1].timestamp >= buffer[0].timestamp);
+
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_get_points_reflects_undo() {
+        let m = tennis_match_new_default();
+        tennis_match_score_point(m, PLAYER_1);
+        tennis_match_score_point(m, PLAYER_2);
+        tennis_match_score_point(m, PLAYER_1);
+        assert_eq!(tennis_match_get_point_count(m), 3);
+
+        tennis_match_undo(m);
+        assert_eq!(tennis_match_get_point_count(m), 2);
+
+        let mut buffer = [PointEvent::default(); 2];
+        assert!(tennis_match_get_points(m, buffer.as_mut_ptr(), 2));
+        assert_eq!(buffer[0].player, PLAYER_1);
+        assert_eq!(buffer[1].player, PLAYER_2);
+
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_point_functions_null_safety() {
+        assert_eq!(tennis_match_get_point_count(ptr::null()), 0);
+        assert!(!tennis_match_get_points(ptr::null(), ptr::null_mut(), 0));
+
+        let m = tennis_match_new_default();
+        assert!(!tennis_match_get_points(m, ptr::null_mut(), 0));
         tennis_match_free(m);
     }
 
