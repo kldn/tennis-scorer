@@ -52,6 +52,7 @@ pub struct MatchScore {
     pub is_tiebreak: bool,
     pub winner: u8,
     pub deuce_count: u8,
+    pub current_server: u8,
 }
 
 // ============================================================================
@@ -101,6 +102,45 @@ pub extern "C" fn tennis_match_new_custom(
         tiebreak_points,
         final_set_tiebreak,
         no_ad_scoring,
+        ..MatchConfig::default()
+    };
+    let inner = MatchWithHistory::new(MatchState::new(config));
+    Box::into_raw(Box::new(TennisMatch { inner }))
+}
+
+/// Create a new doubles match with standard rotation.
+/// `first_server_team` should be PLAYER_1 or PLAYER_2 to indicate which team serves first.
+/// The serve order follows the standard doubles rotation:
+/// [Team1-A, Team2-A, Team1-B, Team2-B] if Team1 serves first, or
+/// [Team2-A, Team1-A, Team2-B, Team1-B] if Team2 serves first.
+#[unsafe(no_mangle)]
+pub extern "C" fn tennis_match_new_doubles(
+    sets_to_win: u8,
+    tiebreak_points: u8,
+    final_set_tiebreak: bool,
+    no_ad_scoring: bool,
+    first_server_team: u8,
+) -> *mut TennisMatch {
+    use crate::config::MatchType;
+
+    let (team_a, team_b) = match first_server_team {
+        PLAYER_1 => (Player::Player1, Player::Player2),
+        PLAYER_2 => (Player::Player2, Player::Player1),
+        _ => return std::ptr::null_mut(),
+    };
+
+    let config = MatchConfig {
+        sets_to_win,
+        tiebreak_points,
+        final_set_tiebreak,
+        no_ad_scoring,
+        match_type: MatchType::Doubles,
+        serve_order: vec![
+            (team_a, 0),
+            (team_b, 0),
+            (team_a, 1),
+            (team_b, 1),
+        ],
     };
     let inner = MatchWithHistory::new(MatchState::new(config));
     Box::into_raw(Box::new(TennisMatch { inner }))
@@ -283,6 +323,7 @@ fn system_time_to_epoch_secs(time: &SystemTime) -> f64 {
 }
 
 fn build_match_score(state: &MatchState) -> MatchScore {
+    let current_server = state.current_server();
     match state {
         MatchState::Completed {
             winner,
@@ -305,6 +346,7 @@ fn build_match_score(state: &MatchState) -> MatchScore {
                 is_tiebreak: false,
                 winner: winner_code,
                 deuce_count: 0,
+                current_server,
             }
         }
         MatchState::Playing {
@@ -328,6 +370,7 @@ fn build_match_score(state: &MatchState) -> MatchScore {
                 is_tiebreak,
                 winner: 0,
                 deuce_count,
+                current_server,
             }
         }
     }
@@ -590,6 +633,73 @@ mod tests {
         let score = tennis_match_get_score(m);
         assert_eq!(score.game_state, GAME_STATE_DEUCE);
         assert_eq!(score.deuce_count, 2);
+
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_doubles_creation() {
+        let m = tennis_match_new_doubles(2, 7, true, false, PLAYER_1);
+        assert!(!m.is_null());
+
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.current_server, 0);
+
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_doubles_creation_team2_first() {
+        let m = tennis_match_new_doubles(2, 7, true, false, PLAYER_2);
+        assert!(!m.is_null());
+
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.current_server, 0);
+
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_doubles_invalid_team() {
+        let m = tennis_match_new_doubles(2, 7, true, false, 0);
+        assert!(m.is_null());
+
+        let m = tennis_match_new_doubles(2, 7, true, false, 3);
+        assert!(m.is_null());
+    }
+
+    #[test]
+    fn test_doubles_server_rotation_via_ffi() {
+        let m = tennis_match_new_doubles(2, 7, true, false, PLAYER_1);
+
+        // Initial server is 0
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.current_server, 0);
+
+        // Win a game (4 points for P1)
+        for _ in 0..4 {
+            tennis_match_score_point(m, PLAYER_1);
+        }
+
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.current_server, 1);
+        assert_eq!(score.player1_games, 1);
+
+        tennis_match_free(m);
+    }
+
+    #[test]
+    fn test_singles_current_server_zero() {
+        let m = tennis_match_new_default();
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.current_server, 0);
+
+        // Win a game
+        for _ in 0..4 {
+            tennis_match_score_point(m, PLAYER_1);
+        }
+        let score = tennis_match_get_score(m);
+        assert_eq!(score.current_server, 0);
 
         tennis_match_free(m);
     }

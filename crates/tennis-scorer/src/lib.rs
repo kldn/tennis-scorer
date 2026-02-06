@@ -8,7 +8,7 @@ mod history;
 pub mod ffi;
 
 pub use types::{Player, Point};
-pub use config::MatchConfig;
+pub use config::{MatchConfig, MatchType};
 pub use game::GameState;
 pub use tiebreak::TiebreakState;
 pub use set::SetState;
@@ -150,5 +150,118 @@ mod integration_tests {
                 assert_eq!(*current_game, GameState::new());
             }
         }
+    }
+
+    fn doubles_config() -> MatchConfig {
+        MatchConfig {
+            match_type: MatchType::Doubles,
+            serve_order: vec![
+                (Player::Player1, 0),
+                (Player::Player2, 0),
+                (Player::Player1, 1),
+                (Player::Player2, 1),
+            ],
+            ..MatchConfig::default()
+        }
+    }
+
+    /// Full doubles match with serve rotation verification
+    #[test]
+    fn test_full_doubles_match_with_serve_rotation() {
+        let config = doubles_config();
+        let state = MatchState::new(config);
+        let mwh = MatchWithHistory::new(state);
+
+        // Verify initial server
+        assert_eq!(mwh.current().current_server(), 0);
+
+        // P1 wins first set 6-0 (6 games)
+        let mwh = score_set(mwh, Player::Player1);
+        // After 6 games, server index = 6 % 4 = 2
+        assert_eq!(mwh.current().current_server(), 2);
+        assert!(mwh.current().winner().is_none());
+
+        // P1 wins second set 6-0 (6 more games)
+        let mwh = score_set(mwh, Player::Player1);
+        // Match should be complete
+        assert_eq!(mwh.current().winner(), Some(Player::Player1));
+    }
+
+    /// Doubles tiebreak serve rotation integration test
+    #[test]
+    fn test_doubles_tiebreak_serve_rotation_integration() {
+        let config = doubles_config();
+        let state = MatchState::new(config);
+        let mut mwh = MatchWithHistory::new(state);
+
+        // Get to 6-6 in first set
+        for _ in 0..6 {
+            mwh = score_game(mwh, Player::Player1);
+            mwh = score_game(mwh, Player::Player2);
+        }
+
+        // Should be in tiebreak now
+        if let MatchState::Playing { sets, .. } = mwh.current() {
+            if let SetState::Playing { tiebreak, .. } = &sets[0] {
+                assert!(tiebreak.is_some());
+            } else {
+                panic!("Expected Playing set");
+            }
+        }
+
+        // After 12 games, tiebreak server should be at position 0
+        assert_eq!(mwh.current().current_server(), 0);
+
+        // Score a tiebreak point
+        mwh = mwh.score_point(Player::Player1);
+        // After 1 point, server advances
+        assert_eq!(mwh.current().current_server(), 1);
+
+        // Win tiebreak for P1 (need 6 more points for 7-0)
+        for _ in 0..6 {
+            mwh = mwh.score_point(Player::Player1);
+        }
+
+        // Set should be complete, now in set 2
+        if let MatchState::Playing { player1_sets, .. } = mwh.current() {
+            assert_eq!(*player1_sets, 1);
+        } else {
+            panic!("Expected Playing");
+        }
+    }
+
+    /// Undo preserves/restores serve rotation state
+    #[test]
+    fn test_doubles_undo_preserves_serve_rotation() {
+        let config = doubles_config();
+        let state = MatchState::new(config);
+        let mwh = MatchWithHistory::new(state);
+
+        assert_eq!(mwh.current().current_server(), 0);
+
+        // Win a game
+        let mwh = score_game(mwh, Player::Player1);
+        assert_eq!(mwh.current().current_server(), 1);
+
+        // Undo last point of the game
+        let mwh = mwh.undo();
+        // Server should be back to 0 (before game completed)
+        assert_eq!(mwh.current().current_server(), 0);
+
+        // Score that point again to complete the game
+        let mwh = mwh.score_point(Player::Player1);
+        assert_eq!(mwh.current().current_server(), 1);
+
+        // Win another game
+        let mwh = score_game(mwh, Player::Player2);
+        assert_eq!(mwh.current().current_server(), 2);
+
+        // Undo all the way back through both games (4 + 4 = 8 undo operations,
+        // but we already undid and re-scored, so history is 4 + 1 + 4 = 9)
+        let mut m = mwh;
+        while m.can_undo() {
+            m = m.undo();
+        }
+        assert_eq!(m.current().current_server(), 0);
     }
 }

@@ -309,6 +309,7 @@ dependencies = [
  "cbindgen",
  "libc",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
