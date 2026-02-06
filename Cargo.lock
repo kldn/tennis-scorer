@@ -312,6 +312,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tennis-scorer-api"
+version = "0.1.0"
+dependencies = [
+ "tennis-scorer",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

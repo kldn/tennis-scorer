@@ -1,14 +1,3 @@
-[package]
-name = "tennis-scorer"
-version = "0.1.0"
-edition = "2024"
-
-[lib]
-crate-type = ["staticlib", "rlib"]
-
-[dependencies]
-serde = { version = "1", features = ["derive"] }
-libc = "0.2"
-
-[build-dependencies]
-cbindgen = "0.26"
+[workspace]
+members = ["crates/*"]
+resolver = "3"

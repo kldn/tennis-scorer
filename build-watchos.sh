@@ -9,12 +9,12 @@ echo ""
 
 # Simulator (Apple Silicon Mac)
 echo "=== Building for aarch64-apple-watchos-sim (Simulator) ==="
-cargo +nightly build --release --target aarch64-apple-watchos-sim
+cargo +nightly build --release --target aarch64-apple-watchos-sim -p tennis-scorer
 
 # Device (Apple Watch Series 4+)
 echo ""
 echo "=== Building for aarch64-apple-watchos (Device) ==="
-cargo +nightly build --release --target aarch64-apple-watchos
+cargo +nightly build --release --target aarch64-apple-watchos -p tennis-scorer
 
 echo ""
 echo "=== Build complete ==="
