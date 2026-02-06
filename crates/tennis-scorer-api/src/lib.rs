@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tennis_scorer::{MatchConfig, Player, MatchWithHistory, MatchState};
+    use tennis_scorer::{MatchConfig, MatchState, MatchWithHistory, Player};
 
     #[test]
     fn test_core_dependency() {

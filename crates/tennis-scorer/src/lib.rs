@@ -1,19 +1,19 @@
-mod types;
 mod config;
-mod game;
-mod tiebreak;
-mod set;
-mod match_state;
-mod history;
 pub mod ffi;
+mod game;
+mod history;
+mod match_state;
+mod set;
+mod tiebreak;
+mod types;
 
-pub use types::{Player, Point};
 pub use config::{MatchConfig, MatchType};
 pub use game::GameState;
-pub use tiebreak::TiebreakState;
-pub use set::SetState;
-pub use match_state::MatchState;
 pub use history::MatchWithHistory;
+pub use match_state::MatchState;
+pub use set::SetState;
+pub use tiebreak::TiebreakState;
+pub use types::{Player, Point};
 
 #[cfg(test)]
 mod integration_tests {

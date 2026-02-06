@@ -135,12 +135,7 @@ pub extern "C" fn tennis_match_new_doubles(
         final_set_tiebreak,
         no_ad_scoring,
         match_type: MatchType::Doubles,
-        serve_order: vec![
-            (team_a, 0),
-            (team_b, 0),
-            (team_a, 1),
-            (team_b, 1),
-        ],
+        serve_order: vec![(team_a, 0), (team_b, 0), (team_a, 1), (team_b, 1)],
     };
     let inner = MatchWithHistory::new(MatchState::new(config));
     Box::into_raw(Box::new(TennisMatch { inner }))
@@ -382,7 +377,15 @@ fn extract_set_info(set: &SetState) -> (u8, u8, u8, u8, u8, bool, u8) {
             player1_games,
             player2_games,
             ..
-        } => (*player1_games, *player2_games, GAME_STATE_COMPLETED, 0, 0, false, 0),
+        } => (
+            *player1_games,
+            *player2_games,
+            GAME_STATE_COMPLETED,
+            0,
+            0,
+            false,
+            0,
+        ),
         SetState::Playing {
             player1_games,
             player2_games,
@@ -396,10 +399,26 @@ fn extract_set_info(set: &SetState) -> (u8, u8, u8, u8, u8, bool, u8) {
                 } else {
                     GAME_STATE_PLAYING
                 };
-                (*player1_games, *player2_games, game_state, p1_pts, p2_pts, true, 0)
+                (
+                    *player1_games,
+                    *player2_games,
+                    game_state,
+                    p1_pts,
+                    p2_pts,
+                    true,
+                    0,
+                )
             } else {
                 let (game_state, p1_pts, p2_pts, deuce_count) = extract_game_info(current_game);
-                (*player1_games, *player2_games, game_state, p1_pts, p2_pts, false, deuce_count)
+                (
+                    *player1_games,
+                    *player2_games,
+                    game_state,
+                    p1_pts,
+                    p2_pts,
+                    false,
+                    deuce_count,
+                )
             }
         }
     }
@@ -407,12 +426,21 @@ fn extract_set_info(set: &SetState) -> (u8, u8, u8, u8, u8, bool, u8) {
 
 fn extract_game_info(game: &GameState) -> (u8, u8, u8, u8) {
     match game {
-        GameState::Points { player1, player2 } => {
-            (GAME_STATE_PLAYING, point_to_number(*player1), point_to_number(*player2), 0)
-        }
+        GameState::Points { player1, player2 } => (
+            GAME_STATE_PLAYING,
+            point_to_number(*player1),
+            point_to_number(*player2),
+            0,
+        ),
         GameState::Deuce { count } => (GAME_STATE_DEUCE, 40, 40, *count),
-        GameState::Advantage { player: Player::Player1, deuce_count } => (GAME_STATE_ADVANTAGE_P1, 0, 0, *deuce_count),
-        GameState::Advantage { player: Player::Player2, deuce_count } => (GAME_STATE_ADVANTAGE_P2, 0, 0, *deuce_count),
+        GameState::Advantage {
+            player: Player::Player1,
+            deuce_count,
+        } => (GAME_STATE_ADVANTAGE_P1, 0, 0, *deuce_count),
+        GameState::Advantage {
+            player: Player::Player2,
+            deuce_count,
+        } => (GAME_STATE_ADVANTAGE_P2, 0, 0, *deuce_count),
         GameState::Completed(_) => (GAME_STATE_COMPLETED, 0, 0, 0),
     }
 }

@@ -61,16 +61,24 @@ impl GameState {
                 if no_ad {
                     GameState::Completed(scorer)
                 } else {
-                    GameState::Advantage { player: scorer, deuce_count: *count }
+                    GameState::Advantage {
+                        player: scorer,
+                        deuce_count: *count,
+                    }
                 }
             }
 
-            GameState::Advantage { player, deuce_count } => {
+            GameState::Advantage {
+                player,
+                deuce_count,
+            } => {
                 if *player == scorer {
                     GameState::Completed(scorer)
                 } else {
                     // Back to deuce, increment count
-                    GameState::Deuce { count: deuce_count + 1 }
+                    GameState::Deuce {
+                        count: deuce_count + 1,
+                    }
                 }
             }
         }
@@ -151,7 +159,13 @@ mod tests {
     fn test_advantage_and_win() {
         let game = GameState::Deuce { count: 1 };
         let game = game.score_point(Player::Player1, false);
-        assert_eq!(game, GameState::Advantage { player: Player::Player1, deuce_count: 1 });
+        assert_eq!(
+            game,
+            GameState::Advantage {
+                player: Player::Player1,
+                deuce_count: 1
+            }
+        );
 
         let game = game.score_point(Player::Player1, false);
         assert_eq!(game, GameState::Completed(Player::Player1));
@@ -159,7 +173,10 @@ mod tests {
 
     #[test]
     fn test_advantage_back_to_deuce() {
-        let game = GameState::Advantage { player: Player::Player1, deuce_count: 1 };
+        let game = GameState::Advantage {
+            player: Player::Player1,
+            deuce_count: 1,
+        };
         let game = game.score_point(Player::Player2, false);
         assert_eq!(game, GameState::Deuce { count: 2 });
         assert_eq!(game.deuce_count(), 2);

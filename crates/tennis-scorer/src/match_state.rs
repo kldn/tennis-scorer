@@ -68,12 +68,11 @@ impl MatchState {
                 new_sets[current_set_index] = new_set.clone();
 
                 // Determine if a game just completed (regular game, not tiebreak)
-                let game_just_completed = !was_in_tiebreak
-                    && Self::game_count_increased(current_set, &new_set);
+                let game_just_completed =
+                    !was_in_tiebreak && Self::game_count_increased(current_set, &new_set);
 
                 // Determine if we just entered a tiebreak
-                let just_entered_tiebreak = !was_in_tiebreak
-                    && Self::set_is_in_tiebreak(&new_set);
+                let just_entered_tiebreak = !was_in_tiebreak && Self::set_is_in_tiebreak(&new_set);
 
                 // Determine if we are in a tiebreak (after scoring)
                 let now_in_tiebreak = Self::set_is_in_tiebreak(&new_set);
@@ -109,11 +108,19 @@ impl MatchState {
                         (new_idx, 0, 0)
                     } else {
                         // No game completed, no tiebreak change
-                        (*serve_rotation_index, *tiebreak_serve_index, *tiebreak_points_served)
+                        (
+                            *serve_rotation_index,
+                            *tiebreak_serve_index,
+                            *tiebreak_points_served,
+                        )
                     }
                 } else {
                     // Singles or no serve order configured
-                    (*serve_rotation_index, *tiebreak_serve_index, *tiebreak_points_served)
+                    (
+                        *serve_rotation_index,
+                        *tiebreak_serve_index,
+                        *tiebreak_points_served,
+                    )
                 };
 
                 if let Some(set_winner) = new_set.winner() {
@@ -166,7 +173,9 @@ impl MatchState {
     /// Check if a set is currently in a tiebreak
     fn set_is_in_tiebreak(set: &SetState) -> bool {
         match set {
-            SetState::Playing { tiebreak: Some(_), .. } => true,
+            SetState::Playing {
+                tiebreak: Some(_), ..
+            } => true,
             _ => false,
         }
     }
@@ -180,8 +189,16 @@ impl MatchState {
 
     fn set_game_total(set: &SetState) -> u8 {
         match set {
-            SetState::Playing { player1_games, player2_games, .. } => player1_games + player2_games,
-            SetState::Completed { player1_games, player2_games, .. } => player1_games + player2_games,
+            SetState::Playing {
+                player1_games,
+                player2_games,
+                ..
+            } => player1_games + player2_games,
+            SetState::Completed {
+                player1_games,
+                player2_games,
+                ..
+            } => player1_games + player2_games,
         }
     }
 
@@ -534,7 +551,10 @@ mod tests {
         }
 
         // Set 1 should be complete, now in set 2.
-        if let MatchState::Playing { player1_sets, sets, .. } = &state {
+        if let MatchState::Playing {
+            player1_sets, sets, ..
+        } = &state
+        {
             assert_eq!(*player1_sets, 1);
             assert_eq!(sets.len(), 2);
         } else {
