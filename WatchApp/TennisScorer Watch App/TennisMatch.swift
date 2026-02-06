@@ -71,6 +71,7 @@ struct Score {
 class TennisMatch: ObservableObject {
     @Published private(set) var score: Score
     @Published private(set) var canUndo: Bool = false
+    private(set) var matchStartedAt: Date = Date()
 
     private var handle: OpaquePointer?
 
@@ -104,11 +105,27 @@ class TennisMatch: ObservableObject {
         updateScore()
     }
 
+    func getPointEvents() -> [(player: Int, timestamp: Date)] {
+        guard let handle = handle else { return [] }
+
+        let count = Int(tennis_match_get_point_count(handle))
+        guard count > 0 else { return [] }
+
+        var buffer = [PointEvent](repeating: PointEvent(), count: count)
+        guard tennis_match_get_points(handle, &buffer, UInt32(count)) else { return [] }
+
+        return buffer.map { event in
+            let timestamp = Date(timeIntervalSince1970: event.timestamp)
+            return (player: Int(event.player), timestamp: timestamp)
+        }
+    }
+
     func newMatch() {
         if let handle = handle {
             tennis_match_free(handle)
         }
         handle = tennis_match_new_default()
+        matchStartedAt = Date()
         updateScore()
     }
 
