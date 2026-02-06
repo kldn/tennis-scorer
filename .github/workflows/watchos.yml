@@ -1,0 +1,49 @@
+name: watchOS Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  watchos-build:
+    name: Cross-compile for watchOS
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly Rust toolchain with rust-src
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build watchOS targets
+        run: bash build-watchos.sh
+
+      - name: Verify static library artifacts
+        run: |
+          echo "Checking for watchOS simulator library..."
+          test -f target/aarch64-apple-watchos-sim/release/libtennis_scorer.a
+          echo "Found: target/aarch64-apple-watchos-sim/release/libtennis_scorer.a"
+
+          echo "Checking for watchOS device library..."
+          test -f target/aarch64-apple-watchos/release/libtennis_scorer.a
+          echo "Found: target/aarch64-apple-watchos/release/libtennis_scorer.a"
+
+      - name: Install cbindgen
+        run: cargo install cbindgen
+
+      - name: Check FFI header freshness
+        run: |
+          RUSTUP_TOOLCHAIN=nightly cbindgen --config cbindgen.toml --crate tennis-scorer --output /tmp/tennis_scorer.h
+          echo "Diffing generated header against committed header..."
+          diff include/tennis_scorer.h /tmp/tennis_scorer.h
+          echo "FFI header is up-to-date."

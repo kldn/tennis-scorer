@@ -1,0 +1,33 @@
+name: API Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deploy:
+    name: Test and Build API
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run API tests
+        run: cargo test -p tennis-scorer-api
+
+      - name: Build API binary
+        run: cargo build --release -p tennis-scorer-api
+
+      # TODO: Add Dockerfile and enable Docker image build
+      # - name: Build Docker image
+      #   run: docker build -t tennis-scorer-api:latest .
