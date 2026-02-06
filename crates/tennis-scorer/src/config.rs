@@ -1,16 +1,11 @@
 use crate::types::Player;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MatchType {
+    #[default]
     Singles,
     Doubles,
-}
-
-impl Default for MatchType {
-    fn default() -> Self {
-        MatchType::Singles
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

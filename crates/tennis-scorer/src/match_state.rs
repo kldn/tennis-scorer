@@ -172,12 +172,13 @@ impl MatchState {
 
     /// Check if a set is currently in a tiebreak
     fn set_is_in_tiebreak(set: &SetState) -> bool {
-        match set {
+        matches!(
+            set,
             SetState::Playing {
-                tiebreak: Some(_), ..
-            } => true,
-            _ => false,
-        }
+                tiebreak: Some(_),
+                ..
+            }
+        )
     }
 
     /// Check if the total game count increased between old and new set states
@@ -264,7 +265,7 @@ impl MatchState {
         if points_played == 0 {
             0
         } else {
-            ((points_played as usize) + 1) / 2
+            (points_played as usize).div_ceil(2)
         }
     }
 }

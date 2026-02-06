@@ -122,13 +122,7 @@ impl SetState {
         let trailer = p1_games.min(p2_games);
         let lead = leader - trailer;
 
-        if leader >= 6 && lead >= 2 {
-            if p1_games > p2_games {
-                Some(Player::Player1)
-            } else {
-                Some(Player::Player2)
-            }
-        } else if leader == 7 && trailer == 6 {
+        if (leader >= 6 && lead >= 2) || (leader == 7 && trailer == 6) {
             if p1_games > p2_games {
                 Some(Player::Player1)
             } else {
