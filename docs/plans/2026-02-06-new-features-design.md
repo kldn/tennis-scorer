@@ -299,6 +299,7 @@ Each change is an independent OpenSpec change that can be worked on through the 
 | 10 | `cicd-pipelines` | GitHub Actions for Rust CI, watchOS build, API deploy | #4 | Medium |
 | 11 | `haptic-training` | Apple Watch haptic rhythm for serve practice | — | Low |
 | 12 | `manual-sync-button` | MatchHistoryView 手動重新同步按鈕（單筆 + 全部） | #6 | Medium |
+| 13 | `shuttle-migration` | 將 API 部署從 Fly.io 遷移到 Shuttle.rs（改 main.rs、config.rs） | #5 | High |
 
 ### Dependency Graph
 
@@ -312,6 +313,7 @@ cargo-workspace ──┬────▶ api-backend ──┬────▶ of
 doubles-support          (independent)
 voice-scoring            (independent)
 haptic-training          (independent, low priority)
+api-backend ──────▶ shuttle-migration
 ```
 
 ### Recommended Build Order
