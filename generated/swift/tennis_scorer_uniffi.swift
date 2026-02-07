@@ -416,6 +416,22 @@ fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -501,9 +517,17 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 public protocol TennisMatchProtocol: AnyObject, Sendable {
     
+    func canUndo()  -> Bool
+    
+    func getPointEvents()  -> [PointEvent]
+    
     func getScore()  -> MatchScore
     
+    func newMatch() 
+    
     func scorePoint(player: Player)  -> MatchScore
+    
+    func undo()  -> MatchScore
     
 }
 open class TennisMatch: TennisMatchProtocol, @unchecked Sendable {
@@ -563,7 +587,29 @@ public convenience init() {
     }
 
     
+public static func newWithConfig(config: MatchConfig) -> TennisMatch  {
+    return try!  FfiConverterTypeTennisMatch_lift(try! rustCall() {
+    uniffi_tennis_scorer_uniffi_fn_constructor_tennismatch_new_with_config(
+        FfiConverterTypeMatchConfig_lower(config),$0
+    )
+})
+}
+    
 
+    
+open func canUndo() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_tennis_scorer_uniffi_fn_method_tennismatch_can_undo(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func getPointEvents() -> [PointEvent]  {
+    return try!  FfiConverterSequenceTypePointEvent.lift(try! rustCall() {
+    uniffi_tennis_scorer_uniffi_fn_method_tennismatch_get_point_events(self.uniffiClonePointer(),$0
+    )
+})
+}
     
 open func getScore() -> MatchScore  {
     return try!  FfiConverterTypeMatchScore_lift(try! rustCall() {
@@ -572,10 +618,23 @@ open func getScore() -> MatchScore  {
 })
 }
     
+open func newMatch()  {try! rustCall() {
+    uniffi_tennis_scorer_uniffi_fn_method_tennismatch_new_match(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
 open func scorePoint(player: Player) -> MatchScore  {
     return try!  FfiConverterTypeMatchScore_lift(try! rustCall() {
     uniffi_tennis_scorer_uniffi_fn_method_tennismatch_score_point(self.uniffiClonePointer(),
         FfiConverterTypePlayer_lower(player),$0
+    )
+})
+}
+    
+open func undo() -> MatchScore  {
+    return try!  FfiConverterTypeMatchScore_lift(try! rustCall() {
+    uniffi_tennis_scorer_uniffi_fn_method_tennismatch_undo(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -636,6 +695,108 @@ public func FfiConverterTypeTennisMatch_lower(_ value: TennisMatch) -> UnsafeMut
 
 
 
+public struct MatchConfig {
+    public var setsToWin: UInt8
+    public var tiebreakPoints: UInt8
+    public var finalSetTiebreak: Bool
+    public var noAdScoring: Bool
+    public var isDoubles: Bool
+    public var firstServerTeam: Player?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(setsToWin: UInt8, tiebreakPoints: UInt8, finalSetTiebreak: Bool, noAdScoring: Bool, isDoubles: Bool, firstServerTeam: Player?) {
+        self.setsToWin = setsToWin
+        self.tiebreakPoints = tiebreakPoints
+        self.finalSetTiebreak = finalSetTiebreak
+        self.noAdScoring = noAdScoring
+        self.isDoubles = isDoubles
+        self.firstServerTeam = firstServerTeam
+    }
+}
+
+#if compiler(>=6)
+extension MatchConfig: Sendable {}
+#endif
+
+
+extension MatchConfig: Equatable, Hashable {
+    public static func ==(lhs: MatchConfig, rhs: MatchConfig) -> Bool {
+        if lhs.setsToWin != rhs.setsToWin {
+            return false
+        }
+        if lhs.tiebreakPoints != rhs.tiebreakPoints {
+            return false
+        }
+        if lhs.finalSetTiebreak != rhs.finalSetTiebreak {
+            return false
+        }
+        if lhs.noAdScoring != rhs.noAdScoring {
+            return false
+        }
+        if lhs.isDoubles != rhs.isDoubles {
+            return false
+        }
+        if lhs.firstServerTeam != rhs.firstServerTeam {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(setsToWin)
+        hasher.combine(tiebreakPoints)
+        hasher.combine(finalSetTiebreak)
+        hasher.combine(noAdScoring)
+        hasher.combine(isDoubles)
+        hasher.combine(firstServerTeam)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMatchConfig: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MatchConfig {
+        return
+            try MatchConfig(
+                setsToWin: FfiConverterUInt8.read(from: &buf), 
+                tiebreakPoints: FfiConverterUInt8.read(from: &buf), 
+                finalSetTiebreak: FfiConverterBool.read(from: &buf), 
+                noAdScoring: FfiConverterBool.read(from: &buf), 
+                isDoubles: FfiConverterBool.read(from: &buf), 
+                firstServerTeam: FfiConverterOptionTypePlayer.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MatchConfig, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.setsToWin, into: &buf)
+        FfiConverterUInt8.write(value.tiebreakPoints, into: &buf)
+        FfiConverterBool.write(value.finalSetTiebreak, into: &buf)
+        FfiConverterBool.write(value.noAdScoring, into: &buf)
+        FfiConverterBool.write(value.isDoubles, into: &buf)
+        FfiConverterOptionTypePlayer.write(value.firstServerTeam, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMatchConfig_lift(_ buf: RustBuffer) throws -> MatchConfig {
+    return try FfiConverterTypeMatchConfig.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMatchConfig_lower(_ value: MatchConfig) -> RustBuffer {
+    return FfiConverterTypeMatchConfig.lower(value)
+}
+
+
 public struct MatchScore {
     public var player1Sets: UInt8
     public var player2Sets: UInt8
@@ -644,10 +805,12 @@ public struct MatchScore {
     public var currentGame: GameScore
     public var winner: Player?
     public var isTiebreak: Bool
+    public var deuceCount: UInt8
+    public var currentServer: UInt8
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(player1Sets: UInt8, player2Sets: UInt8, player1Games: Data, player2Games: Data, currentGame: GameScore, winner: Player?, isTiebreak: Bool) {
+    public init(player1Sets: UInt8, player2Sets: UInt8, player1Games: Data, player2Games: Data, currentGame: GameScore, winner: Player?, isTiebreak: Bool, deuceCount: UInt8, currentServer: UInt8) {
         self.player1Sets = player1Sets
         self.player2Sets = player2Sets
         self.player1Games = player1Games
@@ -655,6 +818,8 @@ public struct MatchScore {
         self.currentGame = currentGame
         self.winner = winner
         self.isTiebreak = isTiebreak
+        self.deuceCount = deuceCount
+        self.currentServer = currentServer
     }
 }
 
@@ -686,6 +851,12 @@ extension MatchScore: Equatable, Hashable {
         if lhs.isTiebreak != rhs.isTiebreak {
             return false
         }
+        if lhs.deuceCount != rhs.deuceCount {
+            return false
+        }
+        if lhs.currentServer != rhs.currentServer {
+            return false
+        }
         return true
     }
 
@@ -697,6 +868,8 @@ extension MatchScore: Equatable, Hashable {
         hasher.combine(currentGame)
         hasher.combine(winner)
         hasher.combine(isTiebreak)
+        hasher.combine(deuceCount)
+        hasher.combine(currentServer)
     }
 }
 
@@ -715,7 +888,9 @@ public struct FfiConverterTypeMatchScore: FfiConverterRustBuffer {
                 player2Games: FfiConverterData.read(from: &buf), 
                 currentGame: FfiConverterTypeGameScore.read(from: &buf), 
                 winner: FfiConverterOptionTypePlayer.read(from: &buf), 
-                isTiebreak: FfiConverterBool.read(from: &buf)
+                isTiebreak: FfiConverterBool.read(from: &buf), 
+                deuceCount: FfiConverterUInt8.read(from: &buf), 
+                currentServer: FfiConverterUInt8.read(from: &buf)
         )
     }
 
@@ -727,6 +902,8 @@ public struct FfiConverterTypeMatchScore: FfiConverterRustBuffer {
         FfiConverterTypeGameScore.write(value.currentGame, into: &buf)
         FfiConverterOptionTypePlayer.write(value.winner, into: &buf)
         FfiConverterBool.write(value.isTiebreak, into: &buf)
+        FfiConverterUInt8.write(value.deuceCount, into: &buf)
+        FfiConverterUInt8.write(value.currentServer, into: &buf)
     }
 }
 
@@ -743,6 +920,76 @@ public func FfiConverterTypeMatchScore_lift(_ buf: RustBuffer) throws -> MatchSc
 #endif
 public func FfiConverterTypeMatchScore_lower(_ value: MatchScore) -> RustBuffer {
     return FfiConverterTypeMatchScore.lower(value)
+}
+
+
+public struct PointEvent {
+    public var player: Player
+    public var timestampEpochSecs: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(player: Player, timestampEpochSecs: Double) {
+        self.player = player
+        self.timestampEpochSecs = timestampEpochSecs
+    }
+}
+
+#if compiler(>=6)
+extension PointEvent: Sendable {}
+#endif
+
+
+extension PointEvent: Equatable, Hashable {
+    public static func ==(lhs: PointEvent, rhs: PointEvent) -> Bool {
+        if lhs.player != rhs.player {
+            return false
+        }
+        if lhs.timestampEpochSecs != rhs.timestampEpochSecs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(player)
+        hasher.combine(timestampEpochSecs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePointEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PointEvent {
+        return
+            try PointEvent(
+                player: FfiConverterTypePlayer.read(from: &buf), 
+                timestampEpochSecs: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PointEvent, into buf: inout [UInt8]) {
+        FfiConverterTypePlayer.write(value.player, into: &buf)
+        FfiConverterDouble.write(value.timestampEpochSecs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePointEvent_lift(_ buf: RustBuffer) throws -> PointEvent {
+    return try FfiConverterTypePointEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePointEvent_lower(_ value: PointEvent) -> RustBuffer {
+    return FfiConverterTypePointEvent.lower(value)
 }
 
 // Note that we don't yet support `indirect` for enums.
@@ -933,6 +1180,31 @@ fileprivate struct FfiConverterOptionTypePlayer: FfiConverterRustBuffer {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePointEvent: FfiConverterRustBuffer {
+    typealias SwiftType = [PointEvent]
+
+    public static func write(_ value: [PointEvent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePointEvent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PointEvent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PointEvent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePointEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -948,13 +1220,28 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_tennis_scorer_uniffi_checksum_method_tennismatch_can_undo() != 45279) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tennis_scorer_uniffi_checksum_method_tennismatch_get_point_events() != 31986) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tennis_scorer_uniffi_checksum_method_tennismatch_get_score() != 4412) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tennis_scorer_uniffi_checksum_method_tennismatch_new_match() != 11622) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tennis_scorer_uniffi_checksum_method_tennismatch_score_point() != 32796) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tennis_scorer_uniffi_checksum_method_tennismatch_undo() != 10514) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tennis_scorer_uniffi_checksum_constructor_tennismatch_new() != 41190) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tennis_scorer_uniffi_checksum_constructor_tennismatch_new_with_config() != 21540) {
         return InitializationResult.apiChecksumMismatch
     }
 

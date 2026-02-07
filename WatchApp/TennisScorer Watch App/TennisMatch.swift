@@ -1,15 +1,29 @@
 import Foundation
 import Combine
-import TennisScorerFFI
+import tennis_scorer_uniffi
 
 enum Player {
     case player1
     case player2
 
-    var ffiValue: UInt8 {
+    init(from uniffiPlayer: tennis_scorer_uniffi.Player) {
+        switch uniffiPlayer {
+        case .player1: self = .player1
+        case .player2: self = .player2
+        }
+    }
+
+    var uniffiValue: tennis_scorer_uniffi.Player {
         switch self {
-        case .player1: return UInt8(PLAYER_1)
-        case .player2: return UInt8(PLAYER_2)
+        case .player1: return .player1
+        case .player2: return .player2
+        }
+    }
+
+    var intValue: Int {
+        switch self {
+        case .player1: return 1
+        case .player2: return 2
         }
     }
 }
@@ -65,6 +79,71 @@ struct Score {
         default: return "\(points)"
         }
     }
+
+    init(from matchScore: MatchScore) {
+        self.player1Sets = Int(matchScore.player1Sets)
+        self.player2Sets = Int(matchScore.player2Sets)
+
+        // Current set games (last entry in the games arrays)
+        let p1GamesData = [UInt8](matchScore.player1Games)
+        let p2GamesData = [UInt8](matchScore.player2Games)
+        self.player1Games = Int(p1GamesData.last ?? 0)
+        self.player2Games = Int(p2GamesData.last ?? 0)
+
+        self.isTiebreak = matchScore.isTiebreak
+        self.deuceCount = Int(matchScore.deuceCount)
+
+        if let w = matchScore.winner {
+            self.winner = Player(from: w)
+        } else {
+            self.winner = nil
+        }
+
+        // Extract points and game state from GameScore enum
+        switch matchScore.currentGame {
+        case .points(let p1, let p2):
+            self.gameState = .playing
+            self.player1Points = Int(p1) ?? 0
+            self.player2Points = Int(p2) ?? 0
+        case .deuce:
+            self.gameState = .deuce
+            self.player1Points = 40
+            self.player2Points = 40
+        case .advantage(let player):
+            switch player {
+            case .player1:
+                self.gameState = .advantagePlayer1
+            case .player2:
+                self.gameState = .advantagePlayer2
+            }
+            self.player1Points = 0
+            self.player2Points = 0
+        case .completed(_):
+            self.gameState = .completed
+            self.player1Points = 0
+            self.player2Points = 0
+        }
+    }
+
+    // For initial empty state
+    init(
+        player1Sets: Int, player2Sets: Int,
+        player1Games: Int, player2Games: Int,
+        player1Points: Int, player2Points: Int,
+        isTiebreak: Bool, gameState: GameState,
+        winner: Player?, deuceCount: Int
+    ) {
+        self.player1Sets = player1Sets
+        self.player2Sets = player2Sets
+        self.player1Games = player1Games
+        self.player2Games = player2Games
+        self.player1Points = player1Points
+        self.player2Points = player2Points
+        self.isTiebreak = isTiebreak
+        self.gameState = gameState
+        self.winner = winner
+        self.deuceCount = deuceCount
+    }
 }
 
 @MainActor
@@ -73,104 +152,57 @@ class TennisMatch: ObservableObject {
     @Published private(set) var canUndo: Bool = false
     private(set) var matchStartedAt: Date = Date()
 
-    private var handle: OpaquePointer?
+    private let engine: tennis_scorer_uniffi.TennisMatch
 
     init() {
-        handle = tennis_match_new_default()
+        engine = tennis_scorer_uniffi.TennisMatch()
         score = Self.emptyScore()
         updateScore()
     }
 
     init(setsToWin: UInt8, tiebreakPoints: UInt8, finalSetTiebreak: Bool, noAdScoring: Bool) {
-        handle = tennis_match_new_custom(setsToWin, tiebreakPoints, finalSetTiebreak, noAdScoring)
+        let config = tennis_scorer_uniffi.MatchConfig(
+            setsToWin: setsToWin,
+            tiebreakPoints: tiebreakPoints,
+            finalSetTiebreak: finalSetTiebreak,
+            noAdScoring: noAdScoring,
+            isDoubles: false,
+            firstServerTeam: nil
+        )
+        engine = tennis_scorer_uniffi.TennisMatch.newWithConfig(config: config)
         score = Self.emptyScore()
         updateScore()
     }
 
-    deinit {
-        if let handle = handle {
-            tennis_match_free(handle)
-        }
-    }
-
     func scorePoint(player: Player) {
-        guard let handle = handle else { return }
-        tennis_match_score_point(handle, player.ffiValue)
+        _ = engine.scorePoint(player: player.uniffiValue)
         updateScore()
     }
 
     func undo() {
-        guard let handle = handle else { return }
-        tennis_match_undo(handle)
+        _ = engine.undo()
         updateScore()
     }
 
     func getPointEvents() -> [(player: Int, timestamp: Date)] {
-        guard let handle = handle else { return [] }
-
-        let count = Int(tennis_match_get_point_count(handle))
-        guard count > 0 else { return [] }
-
-        var buffer = [PointEvent](repeating: PointEvent(), count: count)
-        guard tennis_match_get_points(handle, &buffer, UInt32(count)) else { return [] }
-
-        return buffer.map { event in
-            let timestamp = Date(timeIntervalSince1970: event.timestamp)
-            return (player: Int(event.player), timestamp: timestamp)
+        let events = engine.getPointEvents()
+        return events.map { event in
+            let player = Player(from: event.player).intValue
+            let timestamp = Date(timeIntervalSince1970: event.timestampEpochSecs)
+            return (player: player, timestamp: timestamp)
         }
     }
 
     func newMatch() {
-        if let handle = handle {
-            tennis_match_free(handle)
-        }
-        handle = tennis_match_new_default()
+        engine.newMatch()
         matchStartedAt = Date()
         updateScore()
     }
 
     private func updateScore() {
-        guard let handle = handle else { return }
-
-        let ffiScore = tennis_match_get_score(handle)
-        canUndo = tennis_match_can_undo(handle)
-
-        let gameState: Score.GameState
-        switch Int32(ffiScore.game_state) {
-        case GAME_STATE_DEUCE:
-            gameState = .deuce
-        case GAME_STATE_ADVANTAGE_P1:
-            gameState = .advantagePlayer1
-        case GAME_STATE_ADVANTAGE_P2:
-            gameState = .advantagePlayer2
-        case GAME_STATE_COMPLETED:
-            gameState = .completed
-        default:
-            gameState = .playing
-        }
-
-        let winner: Player?
-        switch Int32(ffiScore.winner) {
-        case PLAYER_1:
-            winner = .player1
-        case PLAYER_2:
-            winner = .player2
-        default:
-            winner = nil
-        }
-
-        score = Score(
-            player1Sets: Int(ffiScore.player1_sets),
-            player2Sets: Int(ffiScore.player2_sets),
-            player1Games: Int(ffiScore.player1_games),
-            player2Games: Int(ffiScore.player2_games),
-            player1Points: Int(ffiScore.player1_points),
-            player2Points: Int(ffiScore.player2_points),
-            isTiebreak: ffiScore.is_tiebreak,
-            gameState: gameState,
-            winner: winner,
-            deuceCount: Int(ffiScore.deuce_count)
-        )
+        let matchScore = engine.getScore()
+        canUndo = engine.canUndo()
+        score = Score(from: matchScore)
     }
 
     private static func emptyScore() -> Score {
