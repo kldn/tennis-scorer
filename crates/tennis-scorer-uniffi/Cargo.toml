@@ -1,0 +1,14 @@
+[package]
+name = "tennis-scorer-uniffi"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+tennis-scorer = { path = "../tennis-scorer" }
+uniffi = { version = "0.29", features = ["cli"] }
+
+[build-dependencies]
+uniffi = { version = "0.29", features = ["build"] }

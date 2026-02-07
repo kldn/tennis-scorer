@@ -1,6 +1,4 @@
 mod config;
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub mod ffi;
 mod game;
 mod history;
 mod match_state;

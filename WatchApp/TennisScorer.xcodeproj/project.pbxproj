@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A222C8312F34C747001ACA4D /* TennisScorer Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A222C8302F34C747001ACA4D /* TennisScorer Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		A2357F402F34D1F40023EB18 /* libtennis_scorer.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A2357F3F2F34D1F40023EB18 /* libtennis_scorer.a */; };
+		A2357F402F34D1F40023EB18 /* libtennis_scorer_uniffi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A2357F3F2F34D1F40023EB18 /* libtennis_scorer_uniffi.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,7 +38,7 @@
 /* Begin PBXFileReference section */
 		A222C82A2F34C747001ACA4D /* TennisScorer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TennisScorer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A222C8302F34C747001ACA4D /* TennisScorer Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TennisScorer Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		A2357F3F2F34D1F40023EB18 /* libtennis_scorer.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtennis_scorer.a; path = "../target/aarch64-apple-watchos-sim/release/libtennis_scorer.a"; sourceTree = "<group>"; };
+		A2357F3F2F34D1F40023EB18 /* libtennis_scorer_uniffi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtennis_scorer_uniffi.a; path = "../target/aarch64-apple-watchos-sim/release/libtennis_scorer_uniffi.a"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -54,7 +54,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A2357F402F34D1F40023EB18 /* libtennis_scorer.a in Frameworks */,
+				A2357F402F34D1F40023EB18 /* libtennis_scorer_uniffi.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,7 +82,7 @@
 		A2357F3E2F34D1F40023EB18 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				A2357F3F2F34D1F40023EB18 /* libtennis_scorer.a */,
+				A2357F3F2F34D1F40023EB18 /* libtennis_scorer_uniffi.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -346,7 +346,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/../include";
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/../generated/swift";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
@@ -381,7 +381,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/../include";
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/../generated/swift";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
