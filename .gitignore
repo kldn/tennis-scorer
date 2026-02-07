@@ -2,4 +2,5 @@
 .claude/
 .DS_Store
 WatchApp/build/
+*.xcuserstate
 Secrets.toml
