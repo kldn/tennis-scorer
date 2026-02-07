@@ -4,7 +4,7 @@ actor APIClient {
     static let shared = APIClient()
 
     // TODO: Make configurable
-    private let baseURL = "https://tennis-scorer-api.fly.dev/api"
+    private let baseURL = "https://tennis-scorer-api.shuttle.app/api"
 
     enum APIError: Error {
         case unauthorized

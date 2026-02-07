@@ -26,9 +26,14 @@ use tennis_scorer_api::create_router;
 async fn setup() -> axum::Router {
     dotenvy::dotenv().ok();
 
-    let config = AppConfig::from_env().expect("DATABASE_URL and JWT_SECRET must be set");
+    let database_url =
+        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for integration tests");
+    let jwt_secret =
+        std::env::var("JWT_SECRET").expect("JWT_SECRET must be set for integration tests");
 
-    let pool = tennis_scorer_api::db::create_pool(&config.database_url)
+    let config = AppConfig { jwt_secret };
+
+    let pool = tennis_scorer_api::db::create_pool(&database_url)
         .await
         .expect("Failed to connect to database");
 
