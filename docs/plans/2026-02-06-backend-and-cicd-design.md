@@ -9,23 +9,21 @@ Extend tennis-scorer with a backend API to persist match results, enable statist
 ```
 ┌─────────────────┐     ┌──────────────────────┐     ┌────────────┐
 │  Apple Watch     │────▶│  Rust API (Axum)      │────▶│ PostgreSQL │
-│  (Swift + FFI)   │ HTTP│                      │     │            │
-└─────────────────┘     │  tennis-scorer crate  │     └─────┬──────┘
-                        │  (shared types)       │           │
-┌─────────────────┐     └──────────────────────┘           │
-│  Future iOS App  │────▶                                   │
-│  (optional)      │ HTTP                                   ▼
-└─────────────────┘                            ┌──────────────────┐
-                                               │  Python Analysis  │
-                                               │  (pandas, etc.)  │
-                                               └──────────────────┘
+│  (Swift + UniFFI)│ HTTP│                      │     │            │
+└─────────────────┘     │  tennis-scorer crate  │     └────────────┘
+                        │  (shared types)       │
+┌─────────────────┐     │  + 統計分析 endpoints  │
+│  Flutter App     │────▶│                      │
+│  (iOS/Android/   │ HTTP└──────────────────────┘
+│   Web)           │
+└─────────────────┘       Deployed on Shuttle.rs
 ```
 
 **Key decisions:**
 - **API backend:** Rust (Axum) — shares types with core scoring engine
-- **Analysis:** Python — leverages pandas/numpy ecosystem for statistics
-- **Database:** PostgreSQL — robust, well-supported by both Rust (sqlx) and Python
-- **Deployment:** Fly.io (or Railway) — simple deployment, free tier sufficient for early stage
+- **Analysis:** Rust — 直接在 API 內計算統計（時間序列、break point、momentum）
+- **Database:** PostgreSQL — robust, well-supported by Rust (sqlx)
+- **Deployment:** Shuttle.rs — Rust 原生部署平台，不需要 Docker
 - **Auth:** JWT-based authentication
 
 ## Project Structure
@@ -33,6 +31,7 @@ Extend tennis-scorer with a backend API to persist match results, enable statist
 ```
 tennis-scorer/
 ├── Cargo.toml                  # workspace root
+├── Shuttle.toml                # Shuttle.rs project config
 ├── crates/
 │   ├── tennis-scorer/          # core scoring engine (existing code)
 │   │   ├── Cargo.toml
@@ -45,9 +44,6 @@ tennis-scorer/
 │           ├── models/         # DB models (sqlx)
 │           ├── auth/           # JWT authentication
 │           └── error.rs
-├── python/                     # Python analysis service
-│   ├── pyproject.toml
-│   └── analysis/
 ├── WatchApp/                   # existing Watch App
 ├── include/                    # FFI headers
 ├── migrations/                 # SQL migrations (sqlx)
@@ -63,6 +59,8 @@ tennis-scorer/
 | `jsonwebtoken` | JWT auth                             |
 | `serde`        | Serialization (already in use)       |
 | `tokio`        | Async runtime                        |
+| `shuttle-axum` | Shuttle.rs Axum integration          |
+| `shuttle-shared-db` | Shuttle.rs PostgreSQL 自動配置   |
 
 ## API Endpoints
 
@@ -77,6 +75,9 @@ GET    /api/matches/:id         # Match detail (with point-by-point record)
 GET    /api/stats/summary       # Personal win rate, match count
 GET    /api/stats/vs/:player    # Head-to-head record vs specific opponent
 GET    /api/stats/trends        # Recent performance trends
+GET    /api/stats/match/:id/analysis  # 單場分析（break point、deuce 統計）
+GET    /api/stats/match/:id/momentum  # Momentum chart 數據
+GET    /api/stats/match/:id/pace      # 時間節奏統計
 ```
 
 ## Type Sharing Example
@@ -137,7 +138,7 @@ CREATE INDEX idx_match_players_name ON match_players(player_name);
 **Design notes:**
 - Singles: 1 player per team. Doubles: 2 players per team.
 - `config` stored as JSONB — directly serialized from Rust `MatchConfig`
-- `points` stores full point-by-point record — enables Python to replay matches for deep analysis (serve game win %, break points, etc.)
+- `points` stores full point-by-point record — enables Rust API to replay matches for deep analysis (serve game win %, break points, etc.)
 - `final_score` stored separately for fast queries without replaying points
 
 ## CI/CD (GitHub Actions)
@@ -160,14 +161,13 @@ CREATE INDEX idx_match_players_name ON match_players(player_name);
 - Verify FFI header is up-to-date (cbindgen diff check)
 ```
 
-### 3. API Deploy (push to main)
+### 3. API Deploy (push to master)
 
 ```yaml
 # .github/workflows/deploy.yml
-- Run tests
-- Build Docker image
-- Push to container registry
-- Deploy to Fly.io / Railway
+- cargo test -p tennis-scorer-api
+- cargo install cargo-shuttle
+- cargo shuttle deploy --working-directory crates/tennis-scorer-api
 ```
 
 ## Implementation Phases
@@ -191,12 +191,13 @@ CREATE INDEX idx_match_players_name ON match_players(player_name);
 ### Phase 4: CI/CD
 - GitHub Actions for Rust CI
 - watchOS build verification
-- API deployment pipeline
+- API deployment pipeline (Shuttle.rs)
 
-### Phase 5: Python analysis
-- Set up Python project
-- Connect to PostgreSQL
-- Implement stats endpoints or reports
+### Phase 5: Rust 統計分析 endpoints
+- `replay_with_context()` in core crate
+- 時間統計 endpoints (pace, duration)
+- Momentum chart data endpoints
+- Break point / deuce analysis
 
 ### Phase 6: Doubles support
 - Extend core engine with serve rotation tracking

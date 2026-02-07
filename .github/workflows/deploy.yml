@@ -3,14 +3,14 @@ name: API Deploy
 on:
   push:
     branches:
-      - main
+      - master
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   deploy:
-    name: Test and Build API
+    name: Test and Deploy API
     runs-on: ubuntu-latest
 
     steps:
@@ -25,9 +25,10 @@ jobs:
       - name: Run API tests
         run: cargo test -p tennis-scorer-api
 
-      - name: Build API binary
-        run: cargo build --release -p tennis-scorer-api
+      - name: Install Shuttle CLI
+        run: cargo install cargo-shuttle
 
-      # TODO: Add Dockerfile and enable Docker image build
-      # - name: Build Docker image
-      #   run: docker build -t tennis-scorer-api:latest .
+      - name: Deploy to Shuttle.rs
+        run: cargo shuttle deploy --working-directory crates/tennis-scorer-api
+        env:
+          SHUTTLE_API_KEY: ${{ secrets.SHUTTLE_API_KEY }}

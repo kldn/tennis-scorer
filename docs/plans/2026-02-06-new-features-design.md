@@ -9,27 +9,26 @@ Additional features and technical enhancements discussed for tennis-scorer, buil
 ```
 ┌─────────────────┐     ┌──────────────────────┐     ┌────────────┐
 │  Apple Watch     │────▶│  Rust API (Axum)      │────▶│ PostgreSQL │
-│  (Swift + FFI)   │ HTTP│                      │     │            │
-│  + SwiftData     │     │  tennis-scorer crate  │     └─────┬──────┘
-│  + Widget        │     │  (shared types)       │           │
-│  + Voice input   │     └──────────────────────┘           │
-└─────────────────┘                                         │
-                                                    ┌───────┴───────┐
-┌─────────────────┐                                 │               │
-│  Flutter App     │────▶  Rust API (same)     ◀────┤               │
-│  (iOS/Android/   │ HTTP                           │               │
-│   Web)           │                                ▼               ▼
-│  + Momentum Chart│                        ┌──────────┐   ┌──────────┐
-│  + Match History │                        │  Python   │   │  Flutter  │
-│  + Statistics    │                        │  Analysis │   │  Charts   │
-└─────────────────┘                        │  (deep)   │   │  (live)   │
-                                           └──────────┘   └──────────┘
+│  (Swift + UniFFI)│ HTTP│                      │     │            │
+│  + SwiftData     │     │  tennis-scorer crate  │     └────────────┘
+│  + Widget        │     │  (shared types)       │
+│  + Voice input   │     │  + 統計分析           │
+└─────────────────┘     └──────────────────────┘
+                                  ▲
+┌─────────────────┐               │
+│  Flutter App     │──────────────┘
+│  (iOS/Android/   │ HTTP
+│   Web)           │
+│  + Momentum Chart│        Deployed on Shuttle.rs
+│  + Match History │
+│  + Statistics    │
+└─────────────────┘
 ```
 
 **Frontend strategy:**
 - **Watch App (Swift)** — scoring tool (primary input device)
 - **Flutter App (iOS/Android/Web)** — match history, statistics, momentum charts
-- **Python** — deep analysis, monthly reports, advanced statistical models
+- **Rust API** — 統計分析 endpoints，時間序列計算，momentum 數據
 
 ---
 
@@ -159,7 +158,7 @@ momentum[i] = momentum[i-1] + weight * direction;
 |----------|---------|
 | Watch App | Simple numeric stats after match (win %, break point rate) |
 | Flutter App | Full momentum chart (fl_chart), detailed stats tables |
-| Python | Deep analysis reports, monthly trends, advanced models |
+| API endpoints | replay_with_context, 時間統計, momentum JSON |
 
 ---
 
@@ -237,6 +236,17 @@ Match ends → Save to SwiftData (local)
               └─ Failure → Retry on next network availability
 ```
 
+### Sync strategy decision
+- **Watch 直接上傳 API**（方案 A） — 不透過 iPhone companion app 中繼
+- watchOS 的 URLSession 在 iPhone 在身邊時自動透過 iPhone 網路出去，效能等同
+- 不需要 WatchConnectivity 或額外的 iPhone companion app
+- 離線優先：先存 SwiftData，再嘗試上傳
+
+### Manual retry
+- MatchHistoryView 加入手動「重新同步」按鈕
+- 未同步比賽旁顯示 ⚠ 圖示 + 重試按鈕
+- 列表頂部加「全部同步」按鈕（當有未同步項目時）
+
 ### Conflict handling
 - Watch is the single source of truth for scoring (write-only to backend)
 - No two-way sync needed — backend never modifies match data
@@ -287,17 +297,16 @@ Each change is an independent OpenSpec change that can be worked on through the 
 | 8 | `watch-widget` | WidgetKit complication (win rate, recent results) | #6 | Medium |
 | 9 | `flutter-app` | Flutter cross-platform app (charts, history, stats) | #5 | Medium |
 | 10 | `cicd-pipelines` | GitHub Actions for Rust CI, watchOS build, API deploy | #4 | Medium |
-| 11 | `python-analysis` | Python deep analysis service (pandas, reports) | #5 | Low |
-| 12 | `haptic-training` | Apple Watch haptic rhythm for serve practice | — | Low |
+| 11 | `haptic-training` | Apple Watch haptic rhythm for serve practice | — | Low |
+| 12 | `manual-sync-button` | MatchHistoryView 手動重新同步按鈕（單筆 + 全部） | #6 | Medium |
 
 ### Dependency Graph
 
 ```
 event-timestamps ──────▶ match-replay-analysis
 
-cargo-workspace ──┬────▶ api-backend ──┬────▶ offline-sync ────▶ watch-widget
-                  │                    ├────▶ flutter-app
-                  │                    └────▶ python-analysis
+cargo-workspace ──┬────▶ api-backend ──┬────▶ offline-sync ──┬──▶ watch-widget
+                  │                    └────▶ flutter-app   └──▶ manual-sync-button
                   └────▶ cicd-pipelines
 
 doubles-support          (independent)
@@ -324,5 +333,4 @@ haptic-training          (independent, low priority)
 
 **Wave 4 — Final layer:**
 - `watch-widget` (after offline-sync)
-- `python-analysis`
 - `haptic-training`

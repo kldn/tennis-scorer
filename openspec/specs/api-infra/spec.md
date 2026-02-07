@@ -33,12 +33,12 @@ The system SHALL expose `GET /api/health` (unauthenticated) that verifies databa
 - **WHEN** the database connection fails
 - **THEN** the system SHALL return 503 with `{"status": "error"}`
 
-### Requirement: Docker Compose for local development
-The project SHALL include a `docker-compose.yml` that starts PostgreSQL with a preconfigured database.
+### Requirement: Shuttle.rs for local development and deployment
+The project SHALL use Shuttle.rs (`cargo shuttle run`) for local development with automatic PostgreSQL provisioning.
 
 #### Scenario: Local development startup
-- **WHEN** `docker compose up -d` is run
-- **THEN** a PostgreSQL instance SHALL be available on localhost:5432 with the configured database name
+- **WHEN** `cargo shuttle run` is executed in the API crate directory
+- **THEN** a PostgreSQL instance SHALL be provisioned automatically and the server SHALL start
 
 ### Requirement: CORS configuration
 The system SHALL enable CORS headers to allow requests from web frontends.
