@@ -4,11 +4,20 @@ import WatchKit
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var allMatches: [MatchRecord]
     @StateObject private var match = TennisMatch()
     @StateObject private var speechRecognizer = SpeechRecognizer()
     @State private var syncService: SyncService?
     @State private var isLoggedIn = KeychainHelper.accessToken != nil
     @State private var matchSaved = false
+
+    private var wins: Int { allMatches.filter { $0.winner == 1 }.count }
+    private var losses: Int { allMatches.filter { $0.winner != 1 }.count }
+    private var winRate: Int {
+        let total = allMatches.count
+        guard total > 0 else { return 0 }
+        return Int(round(Double(wins) / Double(total) * 100))
+    }
 
     var body: some View {
         NavigationStack {
@@ -21,6 +30,12 @@ struct ContentView: View {
 
                     Text("\(match.score.player1Sets) - \(match.score.player2Sets)")
                         .font(.title3)
+
+                    if !allMatches.isEmpty {
+                        Text("戰績: \(wins)勝 \(losses)敗 (\(winRate)%)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
 
                     Button("New Match") {
                         WKInterfaceDevice.current().play(.click)
