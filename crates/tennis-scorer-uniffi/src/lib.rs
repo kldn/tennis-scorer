@@ -1,7 +1,12 @@
 use std::sync::RwLock;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use tennis_scorer::{
+    analysis::{
+        compute_analysis as core_compute_analysis, compute_momentum as core_compute_momentum,
+        compute_pace as core_compute_pace, replay_with_context as core_replay_with_context,
+        PointContext as CorePointContext,
+    },
     GameState as CoreGameState, MatchConfig as CoreMatchConfig, MatchState, MatchType,
     MatchWithHistory, Player as CorePlayer, Point, SetState, TiebreakState,
 };
@@ -324,6 +329,313 @@ impl TennisMatch {
         let mut inner = self.inner.write().unwrap();
         *inner = MatchWithHistory::new(state);
     }
+}
+
+// --- Analysis UniFFI types ---
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct AnalysisPointContext {
+    pub point_number: u32,
+    pub scorer: Player,
+    pub timestamp_epoch_secs: f64,
+    pub serving_player: Player,
+    pub is_break_point: bool,
+    pub is_game_point: bool,
+    pub is_set_point: bool,
+    pub is_match_point: bool,
+    pub game_number_in_set: u32,
+    pub set_number: u32,
+    pub is_tiebreak: bool,
+}
+
+impl From<&CorePointContext> for AnalysisPointContext {
+    fn from(p: &CorePointContext) -> Self {
+        AnalysisPointContext {
+            point_number: p.point_number,
+            scorer: p.scorer.into(),
+            timestamp_epoch_secs: system_time_to_epoch_secs(&p.timestamp),
+            serving_player: p.serving_player.into(),
+            is_break_point: p.is_break_point,
+            is_game_point: p.is_game_point,
+            is_set_point: p.is_set_point,
+            is_match_point: p.is_match_point,
+            game_number_in_set: p.game_number_in_set,
+            set_number: p.set_number,
+            is_tiebreak: p.is_tiebreak,
+        }
+    }
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct BreakPointStatsFFI {
+    pub break_points_created: u32,
+    pub break_points_converted: u32,
+    pub break_points_faced: u32,
+    pub break_points_saved: u32,
+    pub break_point_conversion_rate: f64,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct ServiceStatsFFI {
+    pub service_games_played: u32,
+    pub service_games_held: u32,
+    pub hold_percentage: f64,
+    pub return_games_played: u32,
+    pub return_games_won: u32,
+    pub break_percentage: f64,
+    pub service_points_won: u32,
+    pub service_points_total: u32,
+    pub return_points_won: u32,
+    pub return_points_total: u32,
+    pub dominance_ratio: f64,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct DeuceStatsFFI {
+    pub deuce_games_count: u32,
+    pub deuce_games_won: u32,
+    pub deuce_game_win_rate: f64,
+    pub total_deuce_count: u32,
+    pub average_deuces_per_deuce_game: f64,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct ConversionRateStatsFFI {
+    pub game_points_total: u32,
+    pub game_points_converted: u32,
+    pub game_point_conversion_rate: f64,
+    pub set_points_total: u32,
+    pub set_points_converted: u32,
+    pub set_point_conversion_rate: f64,
+    pub match_points_total: u32,
+    pub match_points_converted: u32,
+    pub match_point_conversion_rate: f64,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct StreakStatsFFI {
+    pub longest_point_streak: u32,
+    pub longest_point_drought: u32,
+    pub longest_service_hold_streak: u32,
+    pub max_games_in_a_row: u32,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct ClutchStatsFFI {
+    pub break_point_win_rate: f64,
+    pub set_point_win_rate: f64,
+    pub match_point_win_rate: f64,
+    pub normal_point_win_rate: f64,
+    pub clutch_score: f64,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct TiebreakStatsFFI {
+    pub tiebreaks_played: u32,
+    pub tiebreaks_won: u32,
+    pub tiebreak_win_rate: f64,
+    pub average_tiebreak_margin: f64,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct TotalPointsStatsFFI {
+    pub points_won: u32,
+    pub total_points: u32,
+    pub points_won_percentage: f64,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct PlayerStatsFFI {
+    pub break_points: BreakPointStatsFFI,
+    pub service: ServiceStatsFFI,
+    pub deuce: DeuceStatsFFI,
+    pub conversion: ConversionRateStatsFFI,
+    pub streaks: StreakStatsFFI,
+    pub clutch: ClutchStatsFFI,
+    pub tiebreak: TiebreakStatsFFI,
+    pub total_points: TotalPointsStatsFFI,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct MatchAnalysisFFI {
+    pub player1: PlayerStatsFFI,
+    pub player2: PlayerStatsFFI,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct MomentumDataFFI {
+    pub basic: Vec<f64>,
+    pub weighted: Vec<f64>,
+    pub per_set_basic: Vec<Vec<f64>>,
+    pub per_set_weighted: Vec<Vec<f64>>,
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct PaceDataFFI {
+    pub average_point_interval_seconds: f64,
+    pub per_set_durations_seconds: Vec<f64>,
+    pub total_duration_seconds: f64,
+}
+
+fn core_analysis_to_ffi(a: &tennis_scorer::analysis::MatchAnalysis) -> MatchAnalysisFFI {
+    MatchAnalysisFFI {
+        player1: player_stats_to_ffi(&a.player1),
+        player2: player_stats_to_ffi(&a.player2),
+    }
+}
+
+fn player_stats_to_ffi(
+    s: &tennis_scorer::analysis::PlayerStats,
+) -> PlayerStatsFFI {
+    PlayerStatsFFI {
+        break_points: BreakPointStatsFFI {
+            break_points_created: s.break_points.break_points_created,
+            break_points_converted: s.break_points.break_points_converted,
+            break_points_faced: s.break_points.break_points_faced,
+            break_points_saved: s.break_points.break_points_saved,
+            break_point_conversion_rate: s.break_points.break_point_conversion_rate,
+        },
+        service: ServiceStatsFFI {
+            service_games_played: s.service.service_games_played,
+            service_games_held: s.service.service_games_held,
+            hold_percentage: s.service.hold_percentage,
+            return_games_played: s.service.return_games_played,
+            return_games_won: s.service.return_games_won,
+            break_percentage: s.service.break_percentage,
+            service_points_won: s.service.service_points_won,
+            service_points_total: s.service.service_points_total,
+            return_points_won: s.service.return_points_won,
+            return_points_total: s.service.return_points_total,
+            dominance_ratio: s.service.dominance_ratio,
+        },
+        deuce: DeuceStatsFFI {
+            deuce_games_count: s.deuce.deuce_games_count,
+            deuce_games_won: s.deuce.deuce_games_won,
+            deuce_game_win_rate: s.deuce.deuce_game_win_rate,
+            total_deuce_count: s.deuce.total_deuce_count,
+            average_deuces_per_deuce_game: s.deuce.average_deuces_per_deuce_game,
+        },
+        conversion: ConversionRateStatsFFI {
+            game_points_total: s.conversion.game_points_total,
+            game_points_converted: s.conversion.game_points_converted,
+            game_point_conversion_rate: s.conversion.game_point_conversion_rate,
+            set_points_total: s.conversion.set_points_total,
+            set_points_converted: s.conversion.set_points_converted,
+            set_point_conversion_rate: s.conversion.set_point_conversion_rate,
+            match_points_total: s.conversion.match_points_total,
+            match_points_converted: s.conversion.match_points_converted,
+            match_point_conversion_rate: s.conversion.match_point_conversion_rate,
+        },
+        streaks: StreakStatsFFI {
+            longest_point_streak: s.streaks.longest_point_streak,
+            longest_point_drought: s.streaks.longest_point_drought,
+            longest_service_hold_streak: s.streaks.longest_service_hold_streak,
+            max_games_in_a_row: s.streaks.max_games_in_a_row,
+        },
+        clutch: ClutchStatsFFI {
+            break_point_win_rate: s.clutch.break_point_win_rate,
+            set_point_win_rate: s.clutch.set_point_win_rate,
+            match_point_win_rate: s.clutch.match_point_win_rate,
+            normal_point_win_rate: s.clutch.normal_point_win_rate,
+            clutch_score: s.clutch.clutch_score,
+        },
+        tiebreak: TiebreakStatsFFI {
+            tiebreaks_played: s.tiebreak.tiebreaks_played,
+            tiebreaks_won: s.tiebreak.tiebreaks_won,
+            tiebreak_win_rate: s.tiebreak.tiebreak_win_rate,
+            average_tiebreak_margin: s.tiebreak.average_tiebreak_margin,
+        },
+        total_points: TotalPointsStatsFFI {
+            points_won: s.total_points.points_won,
+            total_points: s.total_points.total_points,
+            points_won_percentage: s.total_points.points_won_percentage,
+        },
+    }
+}
+
+fn epoch_secs_to_system_time(secs: f64) -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_secs_f64(secs)
+}
+
+// --- Analysis exported functions ---
+
+#[uniffi::export]
+pub fn analyze_match(config: MatchConfig, events: Vec<PointEvent>) -> MatchAnalysisFFI {
+    let core_config = CoreMatchConfig::from(&config);
+    let core_events: Vec<(CorePlayer, SystemTime)> = events
+        .iter()
+        .map(|e| {
+            (
+                CorePlayer::from(e.player),
+                epoch_secs_to_system_time(e.timestamp_epoch_secs),
+            )
+        })
+        .collect();
+    let contexts = core_replay_with_context(&core_config, &core_events);
+    let analysis = core_compute_analysis(&contexts);
+    core_analysis_to_ffi(&analysis)
+}
+
+#[uniffi::export]
+pub fn compute_match_momentum(config: MatchConfig, events: Vec<PointEvent>) -> MomentumDataFFI {
+    let core_config = CoreMatchConfig::from(&config);
+    let core_events: Vec<(CorePlayer, SystemTime)> = events
+        .iter()
+        .map(|e| {
+            (
+                CorePlayer::from(e.player),
+                epoch_secs_to_system_time(e.timestamp_epoch_secs),
+            )
+        })
+        .collect();
+    let contexts = core_replay_with_context(&core_config, &core_events);
+    let momentum = core_compute_momentum(&contexts);
+    MomentumDataFFI {
+        basic: momentum.basic,
+        weighted: momentum.weighted,
+        per_set_basic: momentum.per_set_basic,
+        per_set_weighted: momentum.per_set_weighted,
+    }
+}
+
+#[uniffi::export]
+pub fn compute_match_pace(config: MatchConfig, events: Vec<PointEvent>) -> PaceDataFFI {
+    let core_config = CoreMatchConfig::from(&config);
+    let core_events: Vec<(CorePlayer, SystemTime)> = events
+        .iter()
+        .map(|e| {
+            (
+                CorePlayer::from(e.player),
+                epoch_secs_to_system_time(e.timestamp_epoch_secs),
+            )
+        })
+        .collect();
+    let contexts = core_replay_with_context(&core_config, &core_events);
+    let pace = core_compute_pace(&contexts);
+    PaceDataFFI {
+        average_point_interval_seconds: pace.average_point_interval_seconds,
+        per_set_durations_seconds: pace.per_set_durations.iter().map(|s| s.duration_seconds).collect(),
+        total_duration_seconds: pace.total_duration_seconds,
+    }
+}
+
+#[uniffi::export]
+pub fn replay_match_with_context(
+    config: MatchConfig,
+    events: Vec<PointEvent>,
+) -> Vec<AnalysisPointContext> {
+    let core_config = CoreMatchConfig::from(&config);
+    let core_events: Vec<(CorePlayer, SystemTime)> = events
+        .iter()
+        .map(|e| {
+            (
+                CorePlayer::from(e.player),
+                epoch_secs_to_system_time(e.timestamp_epoch_secs),
+            )
+        })
+        .collect();
+    let contexts = core_replay_with_context(&core_config, &core_events);
+    contexts.iter().map(AnalysisPointContext::from).collect()
 }
 
 #[cfg(test)]

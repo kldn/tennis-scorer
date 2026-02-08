@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["staticlib", "lib"]
+crate-type = ["staticlib", "cdylib", "lib"]
+# cdylib is needed for `uniffi-bindgen generate --library` on macOS
+# staticlib is used for watchOS linking
 
 [dependencies]
 tennis-scorer = { path = "../tennis-scorer" }

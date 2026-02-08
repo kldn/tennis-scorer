@@ -568,6 +568,234 @@ async fn test_register_validation_invalid_email() {
 }
 
 // ---------------------------------------------------------------------------
+// Match analysis endpoints
+// ---------------------------------------------------------------------------
+
+/// Helper: create a match with point events and return its id.
+async fn create_match_with_events(app: &axum::Router, token: &str) -> String {
+    let resp = app
+        .clone()
+        .oneshot(auth_json_request(
+            "POST",
+            "/api/matches",
+            json!({
+                "match_type": "singles",
+                "config": {"sets_to_win": 2},
+                "winner": 1,
+                "player1_sets": 2,
+                "player2_sets": 0,
+                "started_at": "2026-02-06T10:00:00Z",
+                "ended_at": "2026-02-06T11:00:00Z",
+                "events": [
+                    {"point_number": 1, "player": 1, "timestamp": "2026-02-06T10:01:00Z"},
+                    {"point_number": 2, "player": 1, "timestamp": "2026-02-06T10:02:00Z"},
+                    {"point_number": 3, "player": 2, "timestamp": "2026-02-06T10:03:00Z"},
+                    {"point_number": 4, "player": 1, "timestamp": "2026-02-06T10:04:00Z"}
+                ]
+            }),
+            token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    body_json(resp).await["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_match_analysis_valid() {
+    let app = setup().await;
+    let email = format!("analysis_{}@example.com", uuid::Uuid::new_v4());
+    let token = register_and_login(&app, &email, "testpassword123").await;
+    let match_id = create_match_with_events(&app, &token).await;
+
+    let resp = app
+        .clone()
+        .oneshot(auth_request(
+            "GET",
+            &format!("/api/stats/match/{match_id}/analysis"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    // Should have player1 and player2 stats
+    assert!(body["player1"].is_object(), "should have player1 stats");
+    assert!(body["player2"].is_object(), "should have player2 stats");
+    assert!(body["player1"]["total_points"].is_object());
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_match_momentum_valid() {
+    let app = setup().await;
+    let email = format!("momentum_{}@example.com", uuid::Uuid::new_v4());
+    let token = register_and_login(&app, &email, "testpassword123").await;
+    let match_id = create_match_with_events(&app, &token).await;
+
+    let resp = app
+        .clone()
+        .oneshot(auth_request(
+            "GET",
+            &format!("/api/stats/match/{match_id}/momentum"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["basic"].is_array(), "should have basic momentum array");
+    assert!(body["weighted"].is_array(), "should have weighted momentum array");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_match_pace_valid() {
+    let app = setup().await;
+    let email = format!("pace_{}@example.com", uuid::Uuid::new_v4());
+    let token = register_and_login(&app, &email, "testpassword123").await;
+    let match_id = create_match_with_events(&app, &token).await;
+
+    let resp = app
+        .clone()
+        .oneshot(auth_request(
+            "GET",
+            &format!("/api/stats/match/{match_id}/pace"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["point_intervals_secs"].is_array(), "should have point intervals");
+    assert!(body["total_duration_secs"].is_number(), "should have total duration");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_match_analysis_not_found() {
+    let app = setup().await;
+    let email = format!("anf_{}@example.com", uuid::Uuid::new_v4());
+    let token = register_and_login(&app, &email, "testpassword123").await;
+
+    let fake_id = uuid::Uuid::new_v4();
+    let resp = app
+        .clone()
+        .oneshot(auth_request(
+            "GET",
+            &format!("/api/stats/match/{fake_id}/analysis"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_match_analysis_not_owned() {
+    let app = setup().await;
+    let email_a = format!("owner_{}@example.com", uuid::Uuid::new_v4());
+    let email_b = format!("other_{}@example.com", uuid::Uuid::new_v4());
+    let token_a = register_and_login(&app, &email_a, "testpassword123").await;
+    let token_b = register_and_login(&app, &email_b, "testpassword123").await;
+
+    let match_id = create_match_with_events(&app, &token_a).await;
+
+    // User B cannot access user A's match analysis
+    for endpoint in &["analysis", "momentum", "pace"] {
+        let resp = app
+            .clone()
+            .oneshot(auth_request(
+                "GET",
+                &format!("/api/stats/match/{match_id}/{endpoint}"),
+                &token_b,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "{endpoint} should return 404 for non-owner"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_match_analysis_no_events() {
+    let app = setup().await;
+    let email = format!("noevents_{}@example.com", uuid::Uuid::new_v4());
+    let token = register_and_login(&app, &email, "testpassword123").await;
+
+    // Create match with no events
+    let resp = app
+        .clone()
+        .oneshot(auth_json_request(
+            "POST",
+            "/api/matches",
+            json!({
+                "match_type": "singles",
+                "config": {},
+                "winner": 1,
+                "player1_sets": 2,
+                "player2_sets": 0,
+                "started_at": "2026-02-06T10:00:00Z",
+                "ended_at": "2026-02-06T11:00:00Z",
+                "events": []
+            }),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let match_id = body_json(resp).await["id"].as_str().unwrap().to_string();
+
+    // Analysis should return 200 with zeroed stats
+    let resp = app
+        .clone()
+        .oneshot(auth_request(
+            "GET",
+            &format!("/api/stats/match/{match_id}/analysis"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["player1"]["total_points"]["total"], 0);
+
+    // Momentum should return 200 with empty arrays
+    let resp = app
+        .clone()
+        .oneshot(auth_request(
+            "GET",
+            &format!("/api/stats/match/{match_id}/momentum"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["basic"].as_array().unwrap().len(), 0);
+
+    // Pace should return 200 with zero duration
+    let resp = app
+        .clone()
+        .oneshot(auth_request(
+            "GET",
+            &format!("/api/stats/match/{match_id}/pace"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["total_duration_secs"], 0.0);
+}
+
+// ---------------------------------------------------------------------------
 // Cross-user isolation -- one user cannot see another user's matches
 // ---------------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+pub mod analysis;
 mod config;
 mod game;
 mod history;

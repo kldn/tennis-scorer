@@ -1,6 +1,14 @@
+use std::time::SystemTime;
+
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use serde::Serialize;
+use uuid::Uuid;
+
+use tennis_scorer::analysis::{
+    self, MatchAnalysis, MomentumData, PaceData,
+};
+use tennis_scorer::{MatchConfig, Player};
 
 use crate::AppState;
 use crate::auth::middleware::AuthUser;
@@ -79,4 +87,84 @@ pub async fn summary(
         current_streak: Streak { streak_type, count },
         recent_form,
     }))
+}
+
+// --- Per-match analysis helpers ---
+
+async fn load_match_analysis_data(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    match_id: Uuid,
+) -> Result<(MatchConfig, Vec<(Player, SystemTime)>), AppError> {
+    // Load match config (JSON) and verify ownership
+    let row = sqlx::query_as::<_, (serde_json::Value,)>(
+        "SELECT config FROM matches WHERE id = $1 AND user_id = $2",
+    )
+    .bind(match_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Match not found".to_string()))?;
+
+    let config: MatchConfig =
+        serde_json::from_value(row.0).map_err(|e| AppError::Internal(format!("Invalid config: {e}")))?;
+
+    // Load point events
+    let events = sqlx::query_as::<_, (i16, chrono::DateTime<chrono::Utc>)>(
+        "SELECT player, timestamp FROM match_events
+         WHERE match_id = $1 ORDER BY point_number",
+    )
+    .bind(match_id)
+    .fetch_all(pool)
+    .await?;
+
+    let point_events: Vec<(Player, SystemTime)> = events
+        .into_iter()
+        .map(|(player, ts)| {
+            let p = if player == 1 {
+                Player::Player1
+            } else {
+                Player::Player2
+            };
+            let system_time = SystemTime::UNIX_EPOCH
+                + std::time::Duration::from_secs(ts.timestamp() as u64)
+                + std::time::Duration::from_nanos(ts.timestamp_subsec_nanos() as u64);
+            (p, system_time)
+        })
+        .collect();
+
+    Ok((config, point_events))
+}
+
+pub async fn match_analysis(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(match_id): Path<Uuid>,
+) -> Result<Json<MatchAnalysis>, AppError> {
+    let (config, events) = load_match_analysis_data(&state.pool, auth.user_id, match_id).await?;
+    let contexts = analysis::replay_with_context(&config, &events);
+    let result = analysis::compute_analysis(&contexts);
+    Ok(Json(result))
+}
+
+pub async fn match_momentum(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(match_id): Path<Uuid>,
+) -> Result<Json<MomentumData>, AppError> {
+    let (config, events) = load_match_analysis_data(&state.pool, auth.user_id, match_id).await?;
+    let contexts = analysis::replay_with_context(&config, &events);
+    let result = analysis::compute_momentum(&contexts);
+    Ok(Json(result))
+}
+
+pub async fn match_pace(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(match_id): Path<Uuid>,
+) -> Result<Json<PaceData>, AppError> {
+    let (config, events) = load_match_analysis_data(&state.pool, auth.user_id, match_id).await?;
+    let contexts = analysis::replay_with_context(&config, &events);
+    let result = analysis::compute_pace(&contexts);
+    Ok(Json(result))
 }
