@@ -17,4 +17,6 @@ pub fn routes() -> Router<AppState> {
             "/matches/{id}",
             get(handlers::get_match).delete(handlers::delete_match),
         )
+        // Debug: no-auth endpoint for local testing
+        .route("/debug/matches", post(handlers::create_match_debug))
 }

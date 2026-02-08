@@ -1,6 +1,8 @@
 import Foundation
+#if canImport(Speech)
 import Speech
 import AVFoundation
+#endif
 
 // MARK: - State & Action enums
 
@@ -62,6 +64,7 @@ enum KeywordMatcher {
     }
 }
 
+#if canImport(Speech)
 // MARK: - SpeechRecognizer
 
 @MainActor
@@ -307,3 +310,18 @@ class SpeechRecognizer: ObservableObject {
         stopListening()
     }
 }
+#else
+// Stub for platforms where Speech is unavailable (e.g. watchOS Simulator)
+import Combine
+
+@MainActor
+class SpeechRecognizer: ObservableObject {
+    @Published private(set) var state: SpeechState = .idle
+    @Published private(set) var permissionDenied: Bool = false
+    @Published private(set) var isAvailable: Bool = false
+
+    func toggleListening() async {}
+    func stopListening() {}
+    func checkPermissions() async -> Bool { return false }
+}
+#endif

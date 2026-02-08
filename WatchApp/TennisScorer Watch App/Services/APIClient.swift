@@ -3,8 +3,11 @@ import Foundation
 actor APIClient {
     static let shared = APIClient()
 
-    // TODO: Make configurable
+    #if DEBUG
+    private let baseURL = "http://127.0.0.1:8000/api"
+    #else
     private let baseURL = "https://tennis-scorer-api.shuttle.app/api"
+    #endif
 
     enum APIError: Error {
         case unauthorized
@@ -60,7 +63,11 @@ actor APIClient {
 
     func uploadMatch(_ payload: [String: Any]) async throws {
         let jsonData = try JSONSerialization.data(withJSONObject: payload)
+        #if DEBUG
+        let _ = try await requestWithData("POST", path: "/debug/matches", bodyData: jsonData, authenticated: false)
+        #else
         let _ = try await requestWithData("POST", path: "/matches", bodyData: jsonData, authenticated: true)
+        #endif
     }
 
     // MARK: - Internal

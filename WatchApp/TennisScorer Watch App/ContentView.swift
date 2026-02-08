@@ -135,6 +135,39 @@ struct ContentView: View {
                             micButton
                         }
                     }
+
+                    // Auth & History row
+                    HStack(spacing: 12) {
+                        NavigationLink(destination: MatchHistoryView()) {
+                            Image(systemName: "list.bullet")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+
+                        if isLoggedIn {
+                            Button {
+                                KeychainHelper.accessToken = nil
+                                KeychainHelper.refreshToken = nil
+                                isLoggedIn = false
+                            } label: {
+                                Image(systemName: "person.crop.circle.badge.checkmark")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.green)
+                        } else {
+                            NavigationLink(destination: AuthView(isLoggedIn: $isLoggedIn)) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "person.crop.circle")
+                                    Text("登入")
+                                        .font(.caption2)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.orange)
+                        }
+                    }
                 }
                 .alert("需要權限", isPresented: .constant(speechRecognizer.permissionDenied)) {
                     Button("好") {
@@ -177,9 +210,13 @@ struct ContentView: View {
                 syncService = SyncService(modelContext: modelContext)
             }
             isLoggedIn = KeychainHelper.accessToken != nil
+            #if DEBUG
+            Task { await syncService?.syncAll() }
+            #else
             if isLoggedIn {
                 Task { await syncService?.syncAll() }
             }
+            #endif
         }
     }
 
@@ -211,12 +248,19 @@ struct ContentView: View {
         try? modelContext.save()
 
         // Sync to backend
+        #if DEBUG
+        if syncService == nil {
+            syncService = SyncService(modelContext: modelContext)
+        }
+        await syncService?.syncMatch(record)
+        #else
         if isLoggedIn {
             if syncService == nil {
                 syncService = SyncService(modelContext: modelContext)
             }
             await syncService?.syncMatch(record)
         }
+        #endif
     }
 
     // MARK: - Microphone Button

@@ -1,0 +1,7 @@
+module tennis_scorer_uniffiFFI {
+    header "tennis_scorer_uniffiFFI.h"
+    export *
+    use "Darwin"
+    use "_Builtin_stdbool"
+    use "_Builtin_stdint"
+}

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SwiftData
 
 @MainActor
@@ -12,7 +13,9 @@ class SyncService: ObservableObject {
     }
 
     func syncAll() async {
+        #if !DEBUG
         guard KeychainHelper.accessToken != nil else { return }
+        #endif
         guard !isSyncing else { return }
 
         isSyncing = true
@@ -30,7 +33,9 @@ class SyncService: ObservableObject {
     }
 
     func syncMatch(_ match: MatchRecord) async {
+        #if !DEBUG
         guard KeychainHelper.accessToken != nil else { return }
+        #endif
 
         let events: [[String: Any]] = match.events
             .sorted { $0.pointNumber < $1.pointNumber }

@@ -41,9 +41,22 @@
 		A2357F3F2F34D1F40023EB18 /* libtennis_scorer_uniffi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtennis_scorer_uniffi.a; path = "../target/aarch64-apple-watchos-sim/release/libtennis_scorer_uniffi.a"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A2DE7C572F38B87F007F51DC /* Exceptions for "TennisScorer Watch App" folder in "TennisScorer Watch App" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A222C82F2F34C747001ACA4D /* TennisScorer Watch App */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A222C8342F34C747001ACA4D /* TennisScorer Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A2DE7C572F38B87F007F51DC /* Exceptions for "TennisScorer Watch App" folder in "TennisScorer Watch App" target */,
+			);
 			path = "TennisScorer Watch App";
 			sourceTree = "<group>";
 		};
@@ -338,6 +351,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../target/aarch64-apple-watchos-sim/release";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "$(PROJECT_DIR)/../generated/swift/tennis_scorer_uniffi.o";
 				PRODUCT_BUNDLE_IDENTIFIER = com.kldn.TennisScorer.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -373,6 +387,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../target/aarch64-apple-watchos-sim/release";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "$(PROJECT_DIR)/../generated/swift/tennis_scorer_uniffi.o";
 				PRODUCT_BUNDLE_IDENTIFIER = com.kldn.TennisScorer.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;

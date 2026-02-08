@@ -13,6 +13,26 @@ pub async fn create_match(
     State(state): State<AppState>,
     Json(req): Json<CreateMatchRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    create_match_inner(auth.user_id, &state, req).await
+}
+
+/// Debug endpoint: create match without auth (uses first user in DB)
+pub async fn create_match_debug(
+    State(state): State<AppState>,
+    Json(req): Json<CreateMatchRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let user_id = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users LIMIT 1")
+        .fetch_optional(&state.pool)
+        .await?
+        .unwrap_or_else(Uuid::nil);
+    create_match_inner(user_id, &state, req).await
+}
+
+async fn create_match_inner(
+    user_id: Uuid,
+    state: &AppState,
+    req: CreateMatchRequest,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     // Idempotency check
     if let Some(client_id) = req.client_id
         && let Some(existing) =
@@ -31,7 +51,7 @@ pub async fn create_match(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id"
     )
-    .bind(auth.user_id)
+    .bind(user_id)
     .bind(req.client_id)
     .bind(&req.match_type)
     .bind(&req.config)
