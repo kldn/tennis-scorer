@@ -1,27 +1,36 @@
-use shuttle_runtime::SecretStore;
 use sqlx::PgPool;
 
 use tennis_scorer_api::config::AppConfig;
 
-#[shuttle_runtime::main]
-async fn main(
-    #[shuttle_shared_db::Postgres] pool: PgPool,
-    #[shuttle_runtime::Secrets] secrets: SecretStore,
-) -> shuttle_axum::ShuttleAxum {
-    // Note: Shuttle runtime already initializes a tracing subscriber.
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
 
-    let jwt_secret = secrets
-        .get("JWT_SECRET")
-        .expect("JWT_SECRET must be set in Secrets.toml");
+    dotenvy::dotenv().ok();
 
-    let config = AppConfig { jwt_secret };
+    let database_url =
+        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let jwt_secret =
+        std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8000".into());
+
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to database");
 
     sqlx::migrate!()
         .run(&pool)
         .await
         .expect("Failed to run migrations");
 
+    let config = AppConfig { jwt_secret };
     let app = tennis_scorer_api::create_router(pool, &config);
 
-    Ok(app.into())
+    let addr = format!("{host}:{port}");
+    tracing::info!("Listening on {addr}");
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Failed to bind address");
+    axum::serve(listener, app).await.expect("Server error");
 }

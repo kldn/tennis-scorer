@@ -6,7 +6,7 @@ actor APIClient {
     #if DEBUG
     private let baseURL = "http://127.0.0.1:8000/api"
     #else
-    private let baseURL = "https://tennis-scorer-api.shuttle.app/api"
+    private let baseURL = "https://tennis-scorer-api-production.up.railway.app/api"
     #endif
 
     enum APIError: Error {

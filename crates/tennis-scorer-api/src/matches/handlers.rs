@@ -23,8 +23,17 @@ pub async fn create_match_debug(
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let user_id = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users LIMIT 1")
         .fetch_optional(&state.pool)
-        .await?
-        .unwrap_or_else(Uuid::nil);
+        .await?;
+    let user_id = match user_id {
+        Some(id) => id,
+        None => {
+            sqlx::query_scalar::<_, Uuid>(
+                "INSERT INTO users (email, password_hash) VALUES ('debug@localhost', 'debug') RETURNING id",
+            )
+            .fetch_one(&state.pool)
+            .await?
+        }
+    };
     create_match_inner(user_id, &state, req).await
 }
 

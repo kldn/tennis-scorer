@@ -25,10 +25,10 @@ jobs:
       - name: Run API tests
         run: cargo test -p tennis-scorer-api
 
-      - name: Install Shuttle CLI
-        run: cargo install cargo-shuttle
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
-      - name: Deploy to Shuttle.rs
-        run: cargo shuttle deploy --working-directory crates/tennis-scorer-api
+      - name: Deploy to Railway
+        run: railway up --detach
         env:
-          SHUTTLE_API_KEY: ${{ secrets.SHUTTLE_API_KEY }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
