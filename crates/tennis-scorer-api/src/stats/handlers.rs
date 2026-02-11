@@ -126,9 +126,7 @@ async fn load_match_analysis_data(
             } else {
                 Player::Player2
             };
-            let system_time = SystemTime::UNIX_EPOCH
-                + std::time::Duration::from_secs(ts.timestamp() as u64)
-                + std::time::Duration::from_nanos(ts.timestamp_subsec_nanos() as u64);
+            let system_time: SystemTime = ts.into();
             (p, system_time)
         })
         .collect();

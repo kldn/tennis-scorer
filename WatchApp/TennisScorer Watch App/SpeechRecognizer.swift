@@ -78,6 +78,7 @@ class SpeechRecognizer: ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var timeoutTask: Task<Void, Never>?
+    private var idleTask: Task<Void, Never>?
 
     private static let timeoutDuration: UInt64 = 2_000_000_000 // 2 seconds in nanoseconds
 
@@ -240,6 +241,8 @@ class SpeechRecognizer: ObservableObject {
     func stopListening() {
         timeoutTask?.cancel()
         timeoutTask = nil
+        idleTask?.cancel()
+        idleTask = nil
 
         audioEngine?.stop()
         audioEngine?.inputNode.removeTap(onBus: 0)
@@ -282,8 +285,10 @@ class SpeechRecognizer: ObservableObject {
     }
 
     private func scheduleReturnToIdle() {
-        Task {
+        idleTask?.cancel()
+        idleTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000) // 0.8 second display time
+            guard let self = self else { return }
             if case .result = self.state {
                 self.state = .idle
             } else if self.state == .error {

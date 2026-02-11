@@ -91,6 +91,7 @@ actor APIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = bodyData
+        request.timeoutInterval = 30
 
         if authenticated, let token = KeychainHelper.accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -115,7 +116,7 @@ actor APIClient {
                 request.setValue("Bearer \(KeychainHelper.accessToken ?? "")", forHTTPHeaderField: "Authorization")
                 let (retryData, retryResponse) = try await URLSession.shared.data(for: request)
                 guard let retryHttp = retryResponse as? HTTPURLResponse,
-                      (200...204).contains(retryHttp.statusCode) else {
+                      (200...201).contains(retryHttp.statusCode) || retryHttp.statusCode == 204 else {
                     throw APIError.unauthorized
                 }
                 return retryData

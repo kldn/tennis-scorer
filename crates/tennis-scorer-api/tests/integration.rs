@@ -31,7 +31,10 @@ async fn setup() -> axum::Router {
     let jwt_secret =
         std::env::var("JWT_SECRET").expect("JWT_SECRET must be set for integration tests");
 
-    let config = AppConfig { jwt_secret };
+    let config = AppConfig {
+        jwt_secret,
+        allowed_origins: Vec::new(),
+    };
 
     let pool = tennis_scorer_api::db::create_pool(&database_url)
         .await

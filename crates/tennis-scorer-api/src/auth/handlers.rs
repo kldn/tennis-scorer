@@ -5,11 +5,16 @@ use argon2::{
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 use super::jwt;
 use crate::AppState;
 use crate::error::AppError;
+
+static EMAIL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
@@ -49,7 +54,7 @@ pub async fn register(
     Json(req): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), AppError> {
     // Validate input
-    if !req.email.contains('@') || req.email.len() < 3 {
+    if !EMAIL_REGEX.is_match(&req.email) {
         return Err(AppError::Unprocessable("Invalid email format".to_string()));
     }
     if req.password.len() < 8 {

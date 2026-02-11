@@ -554,6 +554,9 @@ fn player_stats_to_ffi(
 }
 
 fn epoch_secs_to_system_time(secs: f64) -> SystemTime {
+    if secs.is_nan() || secs.is_infinite() || secs < 0.0 {
+        return SystemTime::UNIX_EPOCH;
+    }
     SystemTime::UNIX_EPOCH + Duration::from_secs_f64(secs)
 }
 

@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var syncService: SyncService?
     @State private var isLoggedIn = KeychainHelper.accessToken != nil
     @State private var matchSaved = false
+    @State private var showPermissionAlert = false
 
     private var wins: Int { allMatches.filter { $0.winner == 1 }.count }
     private var losses: Int { allMatches.filter { $0.winner != 1 }.count }
@@ -169,12 +170,15 @@ struct ContentView: View {
                         }
                     }
                 }
-                .alert("需要權限", isPresented: .constant(speechRecognizer.permissionDenied)) {
-                    Button("好") {
-                        // Dismiss
-                    }
+                .alert("需要權限", isPresented: $showPermissionAlert) {
+                    Button("好") {}
                 } message: {
                     Text("請在設定中允許麥克風和語音辨識權限以使用語音記分功能")
+                }
+                .onChange(of: speechRecognizer.permissionDenied) { denied in
+                    if denied {
+                        showPermissionAlert = true
+                    }
                 }
                 .onChange(of: speechRecognizer.state) { newState in
                     handleSpeechStateChange(newState)
@@ -245,7 +249,11 @@ struct ContentView: View {
         }
 
         modelContext.insert(record)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            print("[ContentView] Failed to save match: \(error)")
+        }
 
         // Sync to backend in a detached task so it won't be cancelled
         // when the view disappears or the watch screen turns off

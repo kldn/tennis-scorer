@@ -18,5 +18,15 @@ pub fn routes() -> Router<AppState> {
             get(handlers::get_match).delete(handlers::delete_match),
         )
         // Debug: no-auth endpoint for local testing
-        .route("/debug/matches", post(handlers::create_match_debug))
+        .merge(debug_routes())
+}
+
+#[cfg(debug_assertions)]
+fn debug_routes() -> Router<AppState> {
+    Router::new().route("/debug/matches", post(handlers::create_match_debug))
+}
+
+#[cfg(not(debug_assertions))]
+fn debug_routes() -> Router<AppState> {
+    Router::new()
 }

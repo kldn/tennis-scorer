@@ -24,7 +24,16 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    let config = AppConfig { jwt_secret };
+    let allowed_origins: Vec<String> = std::env::var("ALLOWED_ORIGINS")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.split(',').map(|o| o.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    let config = AppConfig {
+        jwt_secret,
+        allowed_origins,
+    };
     let app = tennis_scorer_api::create_router(pool, &config);
 
     let addr = format!("{host}:{port}");

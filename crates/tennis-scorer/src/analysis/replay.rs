@@ -75,7 +75,7 @@ fn determine_server(
             // During tiebreak, use tiebreak serving pattern
             let tb_points = tiebreak_points_played(state);
             let game_before_tb = total_completed_games;
-            let base_server = if game_before_tb.is_multiple_of(2) {
+            let base_server = if game_before_tb % 2 == 0 {
                 Player::Player1
             } else {
                 Player::Player2
@@ -90,7 +90,7 @@ fn determine_server(
             } else {
                 base_server.opponent()
             }
-        } else if total_completed_games.is_multiple_of(2) {
+        } else if total_completed_games % 2 == 0 {
             Player::Player1
         } else {
             Player::Player2
@@ -498,7 +498,6 @@ fn would_win_set(p1_games: u8, p2_games: u8, _is_final_set: bool, _final_set_tie
     (leader >= 6 && lead >= 2) || (leader == 7 && trailer == 6)
 }
 
-/// Check if winning this set would win the match
 /// Check if winning this set would win the match
 fn is_match_point_state(state: &MatchState) -> bool {
     match state {
