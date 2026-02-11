@@ -5,7 +5,7 @@ import WatchKit
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allMatches: [MatchRecord]
-    @StateObject private var match = TennisMatch()
+    @StateObject private var match = TennisMatchViewModel()
     @StateObject private var speechRecognizer = SpeechRecognizer()
     @State private var syncService: SyncService?
     @State private var isLoggedIn = KeychainHelper.accessToken != nil
@@ -247,20 +247,22 @@ struct ContentView: View {
         modelContext.insert(record)
         try? modelContext.save()
 
-        // Sync to backend
-        #if DEBUG
-        if syncService == nil {
-            syncService = SyncService(modelContext: modelContext)
-        }
-        await syncService?.syncMatch(record)
-        #else
-        if isLoggedIn {
-            if syncService == nil {
-                syncService = SyncService(modelContext: modelContext)
+        // Sync to backend in a detached task so it won't be cancelled
+        // when the view disappears or the watch screen turns off
+        let service = syncService ?? {
+            let s = SyncService(modelContext: modelContext)
+            syncService = s
+            return s
+        }()
+        Task.detached { @MainActor in
+            #if DEBUG
+            await service.syncMatch(record)
+            #else
+            if KeychainHelper.accessToken != nil {
+                await service.syncMatch(record)
             }
-            await syncService?.syncMatch(record)
+            #endif
         }
-        #endif
     }
 
     // MARK: - Microphone Button

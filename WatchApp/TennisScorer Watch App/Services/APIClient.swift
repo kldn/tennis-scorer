@@ -3,11 +3,16 @@ import Foundation
 actor APIClient {
     static let shared = APIClient()
 
-    #if DEBUG
-    private let baseURL = "http://127.0.0.1:8000/api"
-    #else
-    private let baseURL = "https://tennis-scorer-api-production.up.railway.app/api"
-    #endif
+    private let baseURL: String = {
+        #if DEBUG
+        if let debugHost = Bundle.main.infoDictionary?["DEBUG_API_HOST"] as? String, !debugHost.isEmpty {
+            return "http://\(debugHost):8000/api"
+        }
+        return "http://127.0.0.1:8000/api"
+        #else
+        return "https://tennis-scorer-api-production.up.railway.app/api"
+        #endif
+    }()
 
     enum APIError: Error {
         case unauthorized

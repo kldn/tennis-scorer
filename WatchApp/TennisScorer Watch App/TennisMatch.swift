@@ -1,23 +1,13 @@
 import Foundation
 import Combine
-import tennis_scorer_uniffi
 
-enum Player {
-    case player1
-    case player2
-
-    init(from uniffiPlayer: tennis_scorer_uniffi.Player) {
-        switch uniffiPlayer {
-        case .player1: self = .player1
-        case .player2: self = .player2
-        }
+extension Player {
+    init(from uniffiPlayer: Player) {
+        self = uniffiPlayer
     }
 
-    var uniffiValue: tennis_scorer_uniffi.Player {
-        switch self {
-        case .player1: return .player1
-        case .player2: return .player2
-        }
+    var uniffiValue: Player {
+        return self
     }
 
     var intValue: Int {
@@ -147,21 +137,21 @@ struct Score {
 }
 
 @MainActor
-class TennisMatch: ObservableObject {
+class TennisMatchViewModel: ObservableObject {
     @Published private(set) var score: Score
     @Published private(set) var canUndo: Bool = false
     private(set) var matchStartedAt: Date = Date()
 
-    private let engine: tennis_scorer_uniffi.TennisMatch
+    private let engine: TennisMatch
 
     init() {
-        engine = tennis_scorer_uniffi.TennisMatch()
+        engine = TennisMatch()
         score = Self.emptyScore()
         updateScore()
     }
 
     init(setsToWin: UInt8, tiebreakPoints: UInt8, finalSetTiebreak: Bool, noAdScoring: Bool) {
-        let config = tennis_scorer_uniffi.MatchConfig(
+        let config = MatchConfig(
             setsToWin: setsToWin,
             tiebreakPoints: tiebreakPoints,
             finalSetTiebreak: finalSetTiebreak,
@@ -169,7 +159,7 @@ class TennisMatch: ObservableObject {
             isDoubles: false,
             firstServerTeam: nil
         )
-        engine = tennis_scorer_uniffi.TennisMatch.newWithConfig(config: config)
+        engine = TennisMatch.newWithConfig(config: config)
         score = Self.emptyScore()
         updateScore()
     }
