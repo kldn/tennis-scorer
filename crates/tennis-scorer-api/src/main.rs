@@ -8,10 +8,8 @@ async fn main() {
 
     dotenvy::dotenv().ok();
 
-    let database_url =
-        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let jwt_secret =
-        std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let port = std::env::var("PORT").unwrap_or_else(|_| "8000".into());
 

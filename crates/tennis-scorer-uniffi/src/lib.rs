@@ -2,13 +2,13 @@ use std::sync::RwLock;
 use std::time::{Duration, SystemTime};
 
 use tennis_scorer::{
-    analysis::{
-        compute_analysis as core_compute_analysis, compute_momentum as core_compute_momentum,
-        compute_pace as core_compute_pace, replay_with_context as core_replay_with_context,
-        PointContext as CorePointContext,
-    },
     GameState as CoreGameState, MatchConfig as CoreMatchConfig, MatchState, MatchType,
     MatchWithHistory, Player as CorePlayer, Point, SetState, TiebreakState,
+    analysis::{
+        PointContext as CorePointContext, compute_analysis as core_compute_analysis,
+        compute_momentum as core_compute_momentum, compute_pace as core_compute_pace,
+        replay_with_context as core_replay_with_context,
+    },
 };
 
 uniffi::setup_scaffolding!();
@@ -265,6 +265,12 @@ pub struct TennisMatch {
     config: RwLock<CoreMatchConfig>,
 }
 
+impl Default for TennisMatch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[uniffi::export]
 impl TennisMatch {
     #[uniffi::constructor]
@@ -484,9 +490,7 @@ fn core_analysis_to_ffi(a: &tennis_scorer::analysis::MatchAnalysis) -> MatchAnal
     }
 }
 
-fn player_stats_to_ffi(
-    s: &tennis_scorer::analysis::PlayerStats,
-) -> PlayerStatsFFI {
+fn player_stats_to_ffi(s: &tennis_scorer::analysis::PlayerStats) -> PlayerStatsFFI {
     PlayerStatsFFI {
         break_points: BreakPointStatsFFI {
             break_points_created: s.break_points.break_points_created,
@@ -617,7 +621,11 @@ pub fn compute_match_pace(config: MatchConfig, events: Vec<PointEvent>) -> PaceD
     let pace = core_compute_pace(&contexts);
     PaceDataFFI {
         average_point_interval_seconds: pace.average_point_interval_seconds,
-        per_set_durations_seconds: pace.per_set_durations.iter().map(|s| s.duration_seconds).collect(),
+        per_set_durations_seconds: pace
+            .per_set_durations
+            .iter()
+            .map(|s| s.duration_seconds)
+            .collect(),
         total_duration_seconds: pace.total_duration_seconds,
     }
 }

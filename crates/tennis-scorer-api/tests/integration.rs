@@ -649,7 +649,10 @@ async fn test_match_momentum_valid() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert!(body["basic"].is_array(), "should have basic momentum array");
-    assert!(body["weighted"].is_array(), "should have weighted momentum array");
+    assert!(
+        body["weighted"].is_array(),
+        "should have weighted momentum array"
+    );
 }
 
 #[tokio::test]
@@ -671,8 +674,14 @@ async fn test_match_pace_valid() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert!(body["point_intervals_secs"].is_array(), "should have point intervals");
-    assert!(body["total_duration_secs"].is_number(), "should have total duration");
+    assert!(
+        body["point_intervals_secs"].is_array(),
+        "should have point intervals"
+    );
+    assert!(
+        body["total_duration_secs"].is_number(),
+        "should have total duration"
+    );
 }
 
 #[tokio::test]

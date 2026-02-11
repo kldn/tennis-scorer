@@ -5,9 +5,7 @@ use axum::extract::{Path, State};
 use serde::Serialize;
 use uuid::Uuid;
 
-use tennis_scorer::analysis::{
-    self, MatchAnalysis, MomentumData, PaceData,
-};
+use tennis_scorer::analysis::{self, MatchAnalysis, MomentumData, PaceData};
 use tennis_scorer::{MatchConfig, Player};
 
 use crate::AppState;
@@ -106,8 +104,8 @@ async fn load_match_analysis_data(
     .await?
     .ok_or_else(|| AppError::NotFound("Match not found".to_string()))?;
 
-    let config: MatchConfig =
-        serde_json::from_value(row.0).map_err(|e| AppError::Internal(format!("Invalid config: {e}")))?;
+    let config: MatchConfig = serde_json::from_value(row.0)
+        .map_err(|e| AppError::Internal(format!("Invalid config: {e}")))?;
 
     // Load point events
     let events = sqlx::query_as::<_, (i16, chrono::DateTime<chrono::Utc>)>(

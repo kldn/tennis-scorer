@@ -75,7 +75,7 @@ fn determine_server(
             // During tiebreak, use tiebreak serving pattern
             let tb_points = tiebreak_points_played(state);
             let game_before_tb = total_completed_games;
-            let base_server = if game_before_tb % 2 == 0 {
+            let base_server = if game_before_tb.is_multiple_of(2) {
                 Player::Player1
             } else {
                 Player::Player2
@@ -90,7 +90,7 @@ fn determine_server(
             } else {
                 base_server.opponent()
             }
-        } else if total_completed_games % 2 == 0 {
+        } else if total_completed_games.is_multiple_of(2) {
             Player::Player1
         } else {
             Player::Player2
@@ -477,13 +477,17 @@ fn is_set_point_state(state: &MatchState, in_tiebreak: bool) -> bool {
                 let is_final_set = player1_sets == config.sets_to_win - 1
                     && player2_sets == config.sets_to_win - 1;
 
-                would_win_set(p1_if_win, *player2_games, is_final_set, config.final_set_tiebreak)
-                    || would_win_set(
-                        *player1_games,
-                        p2_if_win,
-                        is_final_set,
-                        config.final_set_tiebreak,
-                    )
+                would_win_set(
+                    p1_if_win,
+                    *player2_games,
+                    is_final_set,
+                    config.final_set_tiebreak,
+                ) || would_win_set(
+                    *player1_games,
+                    p2_if_win,
+                    is_final_set,
+                    config.final_set_tiebreak,
+                )
             }
             _ => false,
         },
@@ -491,7 +495,12 @@ fn is_set_point_state(state: &MatchState, in_tiebreak: bool) -> bool {
     }
 }
 
-fn would_win_set(p1_games: u8, p2_games: u8, _is_final_set: bool, _final_set_tiebreak: bool) -> bool {
+fn would_win_set(
+    p1_games: u8,
+    p2_games: u8,
+    _is_final_set: bool,
+    _final_set_tiebreak: bool,
+) -> bool {
     let leader = p1_games.max(p2_games);
     let trailer = p1_games.min(p2_games);
     let lead = leader - trailer;
@@ -750,11 +759,7 @@ mod tests {
     #[test]
     fn test_point_numbers_are_sequential() {
         let config = MatchConfig::default();
-        let events = make_events(&[
-            Player::Player1,
-            Player::Player2,
-            Player::Player1,
-        ]);
+        let events = make_events(&[Player::Player1, Player::Player2, Player::Player1]);
         let contexts = replay_with_context(&config, &events);
 
         assert_eq!(contexts[0].point_number, 1);
@@ -783,6 +788,9 @@ mod tests {
         assert!(contexts[6].score_before.current_game.is_deuce);
         // Point 8 (index 7): P1 has advantage, game point
         assert!(contexts[7].is_game_point);
-        assert_eq!(contexts[7].score_before.current_game.advantage, Some(Player::Player1));
+        assert_eq!(
+            contexts[7].score_before.current_game.advantage,
+            Some(Player::Player1)
+        );
     }
 }

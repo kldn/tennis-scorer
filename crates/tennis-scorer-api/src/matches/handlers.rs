@@ -45,14 +45,13 @@ async fn create_match_inner(
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     // Idempotency check
     if let Some(client_id) = req.client_id
-        && let Some(existing) =
-            sqlx::query_scalar::<_, Uuid>(
-                "SELECT id FROM matches WHERE client_id = $1 AND user_id = $2",
-            )
-            .bind(client_id)
-            .bind(user_id)
-            .fetch_optional(&state.pool)
-            .await?
+        && let Some(existing) = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM matches WHERE client_id = $1 AND user_id = $2",
+        )
+        .bind(client_id)
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?
     {
         return Ok((StatusCode::OK, Json(serde_json::json!({"id": existing}))));
     }
