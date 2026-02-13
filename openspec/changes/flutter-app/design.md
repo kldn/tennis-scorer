@@ -1,8 +1,6 @@
 ## Context
 
-tennis-scorer 由 Rust core library、Axum REST API（Railway 部署）、watchOS app 組成。Watch app 目前用 email/password 登入，在小螢幕上輸入不便。API 已提供 match CRUD、統計分析、momentum、pace endpoints。
-
-需要新增 Flutter iPhone app 作為唯讀比賽分析工具，同時將認證統一改為 Sign in with Apple。
+tennis-scorer 由 Rust core library、Axum REST API（Railway 部署）、watchOS app 組成。根據架構設計文件，需建立 Flutter Phone App（純 API 客戶端）和 Flutter Wear OS Watch App（含 Rust 引擎）。全平台改用 Firebase Auth（Google + Apple Sign-In），取代自訂 JWT。
 
 現有 users 表結構：
 ```sql
@@ -12,91 +10,102 @@ users (id UUID PK, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, crea
 ## Goals / Non-Goals
 
 **Goals:**
-- 後端新增 Sign in with Apple 認證 endpoint
-- Watch app 改用 Sign in with Apple 登入
-- Flutter iPhone app：Sign in with Apple 登入、比賽列表、完整統計詳情、momentum 圖表
-- 同一 Apple ID 在兩端對應同一使用者
+- Flutter Phone App：Firebase Auth 登入、6 個主要畫面、FCM 推播、4 層架構
+- Flutter Wear OS Watch App：Rust 引擎 + 離線計分 + 雲端同步
+- Watch App 改用 Firebase Auth（Apple Sign-In）
+- flutter.yml CI pipeline
+- 同一 Firebase UID 在所有平台對應同一使用者
 
 **Non-Goals:**
-- Flutter app 不做計分功能（唯讀）
-- 不支援 Android / Web（第一版僅 iPhone）
-- 不移除既有 email/password API endpoints（保留向後相容）
-- 不做 head-to-head 比較或趨勢分析（後續版本）
+- Phone App 不做計分功能（唯讀）
+- 不處理應用商店上架流程（Phase 3）
+- 不移除既有 email/password API endpoints（由 firebase-auth-migration change 處理）
+- Wear OS app 第一版不含語音輸入（後續加入）
 
 ## Decisions
 
-### D1: Apple identity token 後端驗證
+### D1: Phone App 架構 — 4 層
 
-**選擇**: 用 Apple JWKS 公鑰驗證 identity token
-
-**替代方案**:
-- Apple REST API `POST /auth/token` 驗證 authorization code → 多一次網路請求、需管理 client secret
-- 信任 client 傳來的 user info → 不安全
-
-**理由**: JWKS 驗證是無狀態的，公鑰可快取。用 `jsonwebtoken` crate 搭配 JWK set 解碼，與現有 JWT 基礎設施一致。
-
-### D2: Users 表 schema 變更
-
-**選擇**: 新增 `apple_user_id TEXT UNIQUE` 欄位，`email` 和 `password_hash` 改為 nullable
-
-```sql
-ALTER TABLE users
-  ADD COLUMN apple_user_id TEXT UNIQUE,
-  ALTER COLUMN email DROP NOT NULL,
-  ALTER COLUMN password_hash DROP NOT NULL;
+```
+UI (Widgets) → State Management (Riverpod) → Repository → Network (Dio)
 ```
 
-**替代方案**:
-- 建獨立的 `apple_users` 表 → 查詢分散，token 發放邏輯要分兩路
-- 用 email 關聯既有帳號 → Apple 使用者可能隱藏 email，不可靠
+**理由**: 職責分離清晰，Repository 隔離 API 細節，方便加入本地快取。
 
-**理由**: 單表最簡潔。Apple 使用者只需 `apple_user_id`，既有 email 使用者不受影響。
-
-### D3: Flutter 狀態管理 — Riverpod
+### D2: 狀態管理 — Riverpod
 
 **替代方案**:
 - Provider → 維護停滯，官方推薦遷移到 Riverpod
-- Bloc → boilerplate 多，對這個簡單 app 過度
+- Bloc → boilerplate 多
+- GetX → 社群爭議大
 
-**理由**: 型別安全、支援 async providers、不依賴 BuildContext，適合以 API 資料展示為主的 app。
+**理由**: 型別安全、支援 async providers、不依賴 BuildContext，Flutter 社群推薦。
 
-### D4: 圖表套件 — fl_chart
+### D3: HTTP 客戶端 — Dio
 
-**理由**: Flutter 最成熟的圖表庫，支援折線圖，自訂性高，活躍維護。
+**替代方案**:
+- http → 功能較基本，需手動處理 interceptor
+- Chopper → 需 code generation
 
-### D5: Token 儲存 — flutter_secure_storage
+**理由**: 支援 interceptor（Firebase token 自動附加）、retry、timeout，API 成熟。
 
-**理由**: 底層是 iOS Keychain，與 Watch app 做法一致，安全性符合 JWT 儲存需求。
+### D4: 路由 — GoRouter
 
-### D6: Watch app 認證遷移
+**理由**: Flutter 官方推薦的聲明式路由，支援 deep link、auth redirect guard。
 
-**選擇**: AuthView 改為 Sign in with Apple，用 `AuthenticationServices` framework
+### D5: 圖表 — fl_chart
 
-**理由**: watchOS 6.2+ 原生支援，使用者連按兩下側邊按鈕確認即可，體驗遠優於打字。登入後拿到 identity token，打相同的 `/api/auth/apple` endpoint。
+**理由**: Flutter 最成熟的圖表庫，支援折線圖，自訂性高。
 
-### D7: Flutter 專案結構
+### D6: Wear OS Rust 綁定 — flutter_rust_bridge
+
+**理由**: 自動產生 Dart bindings，支援 async、struct mapping。與 Apple Watch UniFFI 對稱。
+
+### D7: Wear OS 本地持久化 — Hive
+
+**替代方案**:
+- sqflite → 較重
+- shared_preferences → 不適合結構化資料
+
+**理由**: 輕量、無 native dependency、適合手錶簡單資料模型。
+
+### D8: Phone App 專案結構
 
 ```
-flutter/
+flutter/phone_app/
 ├── lib/
 │   ├── models/         # 資料模型
-│   ├── services/       # API client, auth service
+│   ├── repositories/   # API 封裝
 │   ├── providers/      # Riverpod providers
-│   ├── screens/        # 頁面（login, match_list, match_detail, momentum）
+│   ├── screens/        # 頁面（dashboard, history, detail, analysis, social, settings）
 │   ├── widgets/        # 可重用元件
+│   ├── services/       # Auth, API client
 │   └── main.dart
+├── android/
 ├── ios/
 └── pubspec.yaml
 ```
 
-**理由**: 分層清晰，適合這個規模的 app。
+### D9: Wear OS App 專案結構
+
+```
+flutter/wearos_app/
+├── lib/
+│   ├── models/
+│   ├── services/       # TennisMatch (dart:ffi), SyncService, SpeechService
+│   ├── screens/        # ScoreScreen, HistoryScreen, AuthScreen
+│   └── main.dart
+├── android/
+├── rust/               # Rust engine source + flutter_rust_bridge config
+└── pubspec.yaml
+```
 
 ## Risks / Trade-offs
 
-**[Apple 隱藏 email]** → 用 `apple_user_id` 識別使用者，不依賴 email。email 欄位 nullable。
+**Flutter Wear OS 支援** → Flutter 官方對 Wear OS 支援有限，需使用 `wear` package 處理圓形螢幕。
 
-**[既有 email 使用者資料]** → 改用 Apple 登入後，舊帳號資料不會自動遷移。目前 Watch 使用量小，可接受。未來可加帳號綁定。
+**Rust cross-compile** → 需 compile for `aarch64-linux-android`，使用 cargo-ndk。
 
-**[Apple JWKS 快取]** → Apple 公鑰偶爾輪替。實作快取 + 失效時重新拉取機制。
+**Firebase Auth on watchOS** → watchOS Firebase SDK 支援有限，可能需直接用 REST API。
 
-**[Flutter iPhone only]** → 第一版只測 iPhone，日後擴展到其他平台成本低。
+**FCM on Wear OS** → Wear OS 支援 FCM，但需考慮低功耗模式下的通知傳遞。

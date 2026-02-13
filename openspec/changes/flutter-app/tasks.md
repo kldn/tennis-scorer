@@ -1,54 +1,94 @@
-## 1. 後端 — Apple 認證
+## 1. Flutter Phone App — 專案初始化
 
-- [ ] 1.1 新增 DB migration：`apple_user_id TEXT UNIQUE` 欄位，`email` 和 `password_hash` 改為 nullable
-- [ ] 1.2 新增 Apple JWKS 驗證模組（fetch Apple 公鑰、驗證 identity token signature/issuer/audience、快取機制）
-- [ ] 1.3 新增 `POST /api/auth/apple` handler（驗證 token → 查找或建立使用者 → 回傳 JWT access + refresh token）
-- [ ] 1.4 註冊新 route 到 Axum router
-- [ ] 1.5 寫 API 整合測試（新使用者登入、重複登入、無效 token）
+- [ ] 1.1 建立 Flutter 專案 `flutter/phone_app/`（Android + iOS）
+- [ ] 1.2 加入依賴：`flutter_riverpod`, `dio`, `firebase_auth`, `firebase_messaging`, `google_sign_in`, `sign_in_with_apple`, `fl_chart`, `go_router`, `flutter_secure_storage`
+- [ ] 1.3 建立目錄結構（models, repositories, providers, screens, widgets, services）
+- [ ] 1.4 設定 Firebase 專案（google-services.json, GoogleService-Info.plist）
 
-## 2. Watch App — Sign in with Apple
+## 2. Phone App — 認證
 
-- [ ] 2.1 改寫 `AuthView.swift`：移除 email/password 表單，改為 Sign in with Apple button（`ASAuthorizationAppleIDButton`）
-- [ ] 2.2 實作 `ASAuthorizationController` delegate 處理 Apple 認證回調
-- [ ] 2.3 修改 `APIClient` 呼叫 `/api/auth/apple`（傳送 identity token，接收 JWT）
-- [ ] 2.4 在 Xcode project 啟用 Sign in with Apple capability
+- [ ] 2.1 實作 `AuthService`：Firebase Auth 初始化、Google Sign-In、Apple Sign-In
+- [ ] 2.2 實作 `ApiClient`（Dio）：Firebase token interceptor 自動附加、error handling
+- [ ] 2.3 實作 `AuthProvider`（Riverpod）：登入狀態、自動登入、token 刷新
+- [ ] 2.4 建立 `LoginScreen`：Google + Apple Sign-In 按鈕、loading 狀態、error 提示
 
-## 3. Flutter — 專案初始化
+## 3. Phone App — Dashboard
 
-- [ ] 3.1 建立 Flutter 專案（`flutter/` 目錄，iOS only）
-- [ ] 3.2 加入依賴：`flutter_riverpod`、`fl_chart`、`sign_in_with_apple`、`flutter_secure_storage`、`http`、`go_router`
-- [ ] 3.3 建立專案目錄結構（models、services、providers、screens、widgets）
-- [ ] 3.4 設定 iOS Info.plist（Sign in with Apple capability）
+- [ ] 3.1 實作 `StatsRepository`：呼叫 `GET /api/stats/summary`
+- [ ] 3.2 實作 `DashboardProvider`：載入勝率摘要、近期比賽
+- [ ] 3.3 建立 `DashboardScreen`：勝率、連勝、近期比賽快速入口
 
-## 4. Flutter — 認證
+## 4. Phone App — 比賽列表 (History)
 
-- [ ] 4.1 實作 `AuthService`：Sign in with Apple flow → 取得 identity token → 呼叫 `/api/auth/apple` → 儲存 JWT 到 secure storage
-- [ ] 4.2 實作 `ApiClient`：附加 Bearer token、401 時自動 refresh、base URL 設定
-- [ ] 4.3 實作 `AuthProvider`（Riverpod）：管理登入狀態、token 持久化、自動登入
-- [ ] 4.4 建立 `LoginScreen`：Sign in with Apple 按鈕、錯誤提示
+- [ ] 4.1 定義 `Match` model
+- [ ] 4.2 實作 `MatchRepository`：呼叫 `GET /api/matches` 含分頁
+- [ ] 4.3 實作 `MatchListProvider`：分頁載入、pull-to-refresh
+- [ ] 4.4 建立 `HistoryScreen`：日期、比數、勝負、分頁、空狀態
 
-## 5. Flutter — 比賽列表
+## 5. Phone App — 比賽詳情與分析
 
-- [ ] 5.1 定義 `Match` model（對應 API response）
-- [ ] 5.2 實作 `MatchRepository`：呼叫 `GET /api/matches` 含分頁參數
-- [ ] 5.3 實作 `MatchListProvider`：分頁載入、pull-to-refresh
-- [ ] 5.4 建立 `MatchListScreen`：顯示日期、比數、勝負指示、下拉刷新、滑到底載入更多、空狀態
+- [ ] 5.1 定義 `MatchAnalysis`, `MomentumData`, `PaceData` models
+- [ ] 5.2 實作 `StatsRepository`：analysis、momentum、pace endpoints
+- [ ] 5.3 實作 `MatchDetailProvider` + `AnalysisProvider`
+- [ ] 5.4 建立 `MatchDetailScreen`：header + 統計區塊
+- [ ] 5.5 建立 `AnalysisScreen`：fl_chart 折線圖、模式切換、pace 資訊
 
-## 6. Flutter — 比賽詳情與統計
+## 6. Phone App — 社交
 
-- [ ] 6.1 定義 `MatchAnalysis` model（對應 `/stats/match/:id/analysis` response）
-- [ ] 6.2 實作 `StatsRepository`：呼叫 analysis、momentum endpoints
-- [ ] 6.3 實作 `MatchDetailProvider`：載入比賽資料 + 統計數據
-- [ ] 6.4 建立 `MatchDetailScreen`：比賽 header（日期、比數、時長）+ 各項統計區塊（break point、發球、deuce、連續得分、關鍵分、tiebreak）
+- [ ] 6.1 實作 `SocialRepository`：好友請求、好友列表、head-to-head endpoints
+- [ ] 6.2 實作 `SocialProvider`：好友請求管理、好友列表
+- [ ] 6.3 建立 `SocialScreen`：好友列表、待處理請求、搜尋好友
+- [ ] 6.4 建立 `HeadToHeadView`：與好友的對戰記錄統計
 
-## 7. Flutter — Momentum 圖表
+## 7. Phone App — 設定
 
-- [ ] 7.1 定義 `MomentumData` model（對應 `/stats/match/:id/momentum` response）
-- [ ] 7.2 實作 `MomentumProvider`：載入動量數據
-- [ ] 7.3 建立 `MomentumChartScreen`：fl_chart 折線圖、零線指示、模式切換（basic / weighted / per-set basic / per-set weighted）
+- [ ] 7.1 建立 `SettingsScreen`：帳號資訊、通知偏好、登出
+- [ ] 7.2 實作通知偏好 API 呼叫（`PUT /api/notifications/settings`）
 
-## 8. Flutter — 路由與整合
+## 8. Phone App — FCM 推播
 
-- [ ] 8.1 設定 `GoRouter`：登入 → 比賽列表 → 比賽詳情 → Momentum 圖表
-- [ ] 8.2 根據登入狀態自動導向（有 token → 列表，無 token → 登入）
-- [ ] 8.3 整合測試：完整流程（登入 → 列表 → 詳情 → 圖表）
+- [ ] 8.1 初始化 `firebase_messaging`
+- [ ] 8.2 取得 FCM token 並呼叫 `POST /api/notifications/register`
+- [ ] 8.3 處理前景/背景通知顯示
+- [ ] 8.4 實作通知點擊導航（好友請求 → 社交頁、比賽結果 → 比賽詳情）
+
+## 9. Phone App — 路由與整合
+
+- [ ] 9.1 設定 GoRouter：auth guard、畫面導航
+- [ ] 9.2 整合測試：完整流程驗證
+
+## 10. Flutter Wear OS Watch App — 專案初始化
+
+- [ ] 10.1 建立 Flutter 專案 `flutter/wearos_app/`（Android only, Wear OS target）
+- [ ] 10.2 加入依賴：`flutter_rust_bridge`, `hive`, `firebase_auth`, `wear`
+- [ ] 10.3 設定 flutter_rust_bridge + cargo-ndk 交叉編譯
+
+## 11. Wear OS — Rust 引擎整合
+
+- [ ] 11.1 設定 Rust → Dart FFI bindings（flutter_rust_bridge codegen）
+- [ ] 11.2 實作 `TennisMatch` wrapper（dart:ffi → Rust MatchWithHistory）
+- [ ] 11.3 驗證計分邏輯正確性
+
+## 12. Wear OS — 計分 UI
+
+- [ ] 12.1 建立 `ScoreScreen`：圓形螢幕適配、得分按鈕、比分顯示
+- [ ] 12.2 建立 `HistoryScreen`：本地比賽記錄
+- [ ] 12.3 建立 `AuthScreen`：Firebase Auth 登入
+
+## 13. Wear OS — 離線同步
+
+- [ ] 13.1 實作 Hive 本地持久化（MatchRecord, EventRecord）
+- [ ] 13.2 實作 `SyncService`：離線比賽上傳、client_id 冪等、失敗重試
+- [ ] 13.3 同步觸發：比賽完成時 + app 啟動時
+
+## 14. Watch App — Firebase Auth 遷移
+
+- [ ] 14.1 改寫 `AuthView.swift`：移除 email/password，改為 Firebase Auth (Apple Sign-In)
+- [ ] 14.2 修改 `APIClient.swift`：傳送 Firebase ID Token 而非 JWT
+
+## 15. CI — Flutter Pipeline
+
+- [ ] 15.1 建立 `.github/workflows/flutter.yml`
+- [ ] 15.2 Phone App：flutter analyze + test + build apk + build ios
+- [ ] 15.3 Wear OS App：flutter analyze + test + build apk
+- [ ] 15.4 設定觸發條件（flutter/ 目錄變更時執行）
