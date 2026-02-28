@@ -43,26 +43,37 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkLoginStatus() async {
-    final loggedIn = await _authService.isLoggedIn;
-    state = loggedIn
-        ? const AuthState.authenticated()
-        : const AuthState.unauthenticated();
+    try {
+      final loggedIn = await _authService.isLoggedIn;
+      if (!mounted) return;
+      state = loggedIn
+          ? const AuthState.authenticated()
+          : const AuthState.unauthenticated();
+    } catch (e) {
+      debugPrint('Login status check failed: $e');
+      if (!mounted) return;
+      state = const AuthState.unauthenticated();
+    }
   }
 
   Future<void> signInWithApple() async {
     try {
       await _authService.signInWithApple();
+      if (!mounted) return;
       state = const AuthState.authenticated();
     } on ApiException catch (e) {
+      if (!mounted) return;
       state = AuthState.error(e.message);
     } catch (e) {
       debugPrint('Sign in error: $e');
+      if (!mounted) return;
       state = AuthState.error('登入失敗，請重試');
     }
   }
 
   Future<void> logout() async {
     await _authService.logout();
+    if (!mounted) return;
     state = const AuthState.unauthenticated();
   }
 }

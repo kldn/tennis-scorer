@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -106,7 +108,7 @@ class _ChartContent extends StatelessWidget {
         .toList();
 
     final maxY = values.map((v) => v.abs()).reduce((a, b) => a > b ? a : b);
-    final yBound = (maxY * 1.1).ceilToDouble().clamp(1.0, double.infinity);
+    final yBound = math.max(1.0, (maxY * 1.1).ceilToDouble());
 
     return LineChart(
       LineChartData(

@@ -178,6 +178,13 @@ pub async fn apple_auth(
                         .fetch_one(&state.pool)
                         .await?
                     }
+                    Err(sqlx::Error::Database(ref db_err))
+                        if db_err.constraint() == Some("users_email_key") =>
+                    {
+                        return Err(AppError::Conflict(
+                            "Email already registered with another account".to_string(),
+                        ));
+                    }
                     Err(other) => return Err(AppError::from(other)),
                 }
             }

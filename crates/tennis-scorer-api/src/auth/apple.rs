@@ -43,7 +43,7 @@ impl AppleTokenVerifier {
         let http_client = reqwest::Client::builder()
             .timeout(JWKS_TIMEOUT)
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+            .expect("Failed to build HTTP client for Apple JWKS");
 
         Self {
             bundle_id,

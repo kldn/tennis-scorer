@@ -21,6 +21,8 @@ class ApiClient {
   static const _refreshTokenKey = 'refresh_token';
   static const _requestTimeout = Duration(seconds: 15);
 
+  Future<bool>? _refreshFuture;
+
   ApiClient({
     required this.baseUrl,
     http.Client? httpClient,
@@ -145,7 +147,13 @@ class ApiClient {
     }
   }
 
-  Future<bool> _tryRefresh() async {
+  Future<bool> _tryRefresh() {
+    return _refreshFuture ??= _doRefresh().whenComplete(() {
+      _refreshFuture = null;
+    });
+  }
+
+  Future<bool> _doRefresh() async {
     final token = await _storage.read(key: _refreshTokenKey);
     if (token == null) return false;
 
@@ -156,8 +164,11 @@ class ApiClient {
       return true;
     } catch (e) {
       debugPrint('Token refresh failed: $e');
-      await _storage.delete(key: _accessTokenKey);
-      await _storage.delete(key: _refreshTokenKey);
+      final current = await _storage.read(key: _refreshTokenKey);
+      if (current == token) {
+        await _storage.delete(key: _accessTokenKey);
+        await _storage.delete(key: _refreshTokenKey);
+      }
       return false;
     }
   }
