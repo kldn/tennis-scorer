@@ -9,20 +9,21 @@ use axum::Router;
 use sqlx::PgPool;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
+use crate::auth::apple::AppleTokenVerifier;
 use crate::config::AppConfig;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub jwt_secret: String,
-    pub apple_bundle_id: String,
+    pub apple_verifier: AppleTokenVerifier,
 }
 
 pub fn create_router(pool: PgPool, config: &AppConfig) -> Router {
     let state = AppState {
         pool,
         jwt_secret: config.jwt_secret.clone(),
-        apple_bundle_id: config.apple_bundle_id.clone(),
+        apple_verifier: AppleTokenVerifier::new(config.apple_bundle_id.clone()),
     };
 
     let cors = if config.allowed_origins.is_empty() {

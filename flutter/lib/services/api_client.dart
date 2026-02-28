@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -126,17 +128,21 @@ class ApiClient {
   Future<http.Response> _authenticatedRequest(
     Future<http.Response> Function() makeRequest,
   ) async {
-    var response = await makeRequest();
+    try {
+      var response = await makeRequest();
 
-    if (response.statusCode == 401) {
-      final refreshed = await _tryRefresh();
-      if (refreshed) {
-        response = await makeRequest();
+      if (response.statusCode == 401) {
+        final refreshed = await _tryRefresh();
+        if (refreshed) {
+          response = await makeRequest();
+        }
       }
-    }
 
-    _checkResponse(response);
-    return response;
+      _checkResponse(response);
+      return response;
+    } on TimeoutException {
+      throw ApiException(408, 'Request timed out');
+    }
   }
 
   Future<bool> _tryRefresh() async {
@@ -148,7 +154,8 @@ class ApiClient {
       await _storage.write(key: _accessTokenKey, value: tokens.accessToken);
       await _storage.write(key: _refreshTokenKey, value: tokens.refreshToken);
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Token refresh failed: $e');
       await _storage.delete(key: _accessTokenKey);
       await _storage.delete(key: _refreshTokenKey);
       return false;

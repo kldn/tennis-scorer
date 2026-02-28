@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -52,8 +53,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await _authService.signInWithApple();
       state = const AuthState.authenticated();
+    } on ApiException catch (e) {
+      state = AuthState.error(e.message);
     } catch (e) {
-      state = AuthState.error(e.toString());
+      debugPrint('Sign in error: $e');
+      state = AuthState.error('登入失敗，請重試');
     }
   }
 

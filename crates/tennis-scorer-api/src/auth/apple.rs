@@ -82,8 +82,13 @@ impl AppleTokenVerifier {
             }
         }
 
-        let keys = self.fetch_keys().await?;
+        // Double-checked locking: re-check under write lock to avoid parallel fetches
         let mut cache = self.cached_keys.write().await;
+        if !force_refresh && let Some(keys) = cache.as_ref() {
+            return Ok(keys.clone());
+        }
+
+        let keys = self.fetch_keys().await?;
         *cache = Some(keys.clone());
         Ok(keys)
     }

@@ -9,7 +9,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
-use super::apple::AppleTokenVerifier;
 use super::jwt;
 use crate::AppState;
 use crate::error::AppError;
@@ -148,8 +147,7 @@ pub async fn apple_auth(
     State(state): State<AppState>,
     Json(req): Json<AppleAuthRequest>,
 ) -> Result<Json<TokenResponse>, AppError> {
-    let verifier = AppleTokenVerifier::new(state.apple_bundle_id.clone());
-    let apple_claims = verifier.verify(&req.identity_token).await?;
+    let apple_claims = state.apple_verifier.verify(&req.identity_token).await?;
 
     // Find or create user by apple_user_id
     let user_id: uuid::Uuid =

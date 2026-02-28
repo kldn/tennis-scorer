@@ -24,7 +24,11 @@ class MomentumChartScreen extends ConsumerWidget {
           debugPrint('Momentum load error: $err');
           return const Center(child: Text('載入失敗，請稍後再試'));
         },
-        data: (data) => _ChartContent(data: data, mode: currentMode, ref: ref),
+        data: (data) => _ChartContent(
+          data: data,
+          mode: currentMode,
+          onModeChanged: (m) => ref.read(momentumModeProvider.notifier).state = m,
+        ),
       ),
     );
   }
@@ -33,12 +37,12 @@ class MomentumChartScreen extends ConsumerWidget {
 class _ChartContent extends StatelessWidget {
   final MomentumData data;
   final MomentumMode mode;
-  final WidgetRef ref;
+  final ValueChanged<MomentumMode> onModeChanged;
 
   const _ChartContent({
     required this.data,
     required this.mode,
-    required this.ref,
+    required this.onModeChanged,
   });
 
   @override
@@ -54,7 +58,7 @@ class _ChartContent extends StatelessWidget {
                 .toList(),
             selected: {mode},
             onSelectionChanged: (selected) {
-              ref.read(momentumModeProvider.notifier).state = selected.first;
+              onModeChanged(selected.first);
             },
           ),
         ),
