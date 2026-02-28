@@ -162,13 +162,18 @@ class ApiClient {
       await _storage.write(key: _accessTokenKey, value: tokens.accessToken);
       await _storage.write(key: _refreshTokenKey, value: tokens.refreshToken);
       return true;
-    } catch (e) {
+    } on ApiException catch (e) {
       debugPrint('Token refresh failed: $e');
-      final current = await _storage.read(key: _refreshTokenKey);
-      if (current == token) {
-        await _storage.delete(key: _accessTokenKey);
-        await _storage.delete(key: _refreshTokenKey);
+      if (e.statusCode == 401) {
+        final current = await _storage.read(key: _refreshTokenKey);
+        if (current == token) {
+          await _storage.delete(key: _accessTokenKey);
+          await _storage.delete(key: _refreshTokenKey);
+        }
       }
+      return false;
+    } catch (e) {
+      debugPrint('Token refresh failed (transient): $e');
       return false;
     }
   }

@@ -45,13 +45,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> _checkLoginStatus() async {
     try {
       final loggedIn = await _authService.isLoggedIn;
-      if (!mounted) return;
+      if (!mounted || state.status != AuthStatus.unknown) return;
       state = loggedIn
           ? const AuthState.authenticated()
           : const AuthState.unauthenticated();
     } catch (e) {
       debugPrint('Login status check failed: $e');
-      if (!mounted) return;
+      if (!mounted || state.status != AuthStatus.unknown) return;
       state = const AuthState.unauthenticated();
     }
   }

@@ -60,6 +60,7 @@ class _ChartContent extends StatelessWidget {
                 .toList(),
             selected: {mode},
             onSelectionChanged: (selected) {
+              if (selected.isEmpty) return;
               onModeChanged(selected.first);
             },
           ),
@@ -96,6 +97,39 @@ class _ChartContent extends StatelessWidget {
     return _buildSingleChart(context);
   }
 
+  LineChartData _chartData({
+    required double yBound,
+    required List<LineChartBarData> lineBars,
+  }) {
+    return LineChartData(
+      minY: -yBound,
+      maxY: yBound,
+      gridData: FlGridData(
+        drawHorizontalLine: true,
+        drawVerticalLine: false,
+        getDrawingHorizontalLine: (value) {
+          if (value == 0) {
+            return const FlLine(color: Colors.grey, strokeWidth: 2);
+          }
+          return FlLine(
+            color: Colors.grey.withValues(alpha: 0.2),
+            strokeWidth: 0.5,
+          );
+        },
+      ),
+      titlesData: const FlTitlesData(
+        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        bottomTitles: AxisTitles(
+          axisNameWidget: Text('Point'),
+          sideTitles: SideTitles(showTitles: false),
+        ),
+      ),
+      borderData: FlBorderData(show: false),
+      lineBarsData: lineBars,
+    );
+  }
+
   Widget _buildSingleChart(BuildContext context) {
     final values = mode == MomentumMode.basic ? data.basic : data.weighted;
 
@@ -111,35 +145,9 @@ class _ChartContent extends StatelessWidget {
     final yBound = math.max(1.0, (maxY * 1.1).ceilToDouble());
 
     return LineChart(
-      LineChartData(
-        minY: -yBound,
-        maxY: yBound,
-        gridData: FlGridData(
-          drawHorizontalLine: true,
-          drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) {
-            if (value == 0) {
-              return const FlLine(
-                color: Colors.grey,
-                strokeWidth: 2,
-              );
-            }
-            return FlLine(
-              color: Colors.grey.withValues(alpha: 0.2),
-              strokeWidth: 0.5,
-            );
-          },
-        ),
-        titlesData: const FlTitlesData(
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: AxisTitles(
-            axisNameWidget: Text('Point'),
-            sideTitles: SideTitles(showTitles: false),
-          ),
-        ),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
+      _chartData(
+        yBound: yBound,
+        lineBars: [
           LineChartBarData(
             spots: spots,
             isCurved: true,
@@ -214,35 +222,7 @@ class _ChartContent extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Expanded(
-          child: LineChart(
-            LineChartData(
-              minY: -yBound,
-              maxY: yBound,
-              gridData: FlGridData(
-                drawHorizontalLine: true,
-                drawVerticalLine: false,
-                getDrawingHorizontalLine: (value) {
-                  if (value == 0) {
-                    return const FlLine(color: Colors.grey, strokeWidth: 2);
-                  }
-                  return FlLine(
-                    color: Colors.grey.withValues(alpha: 0.2),
-                    strokeWidth: 0.5,
-                  );
-                },
-              ),
-              titlesData: const FlTitlesData(
-                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(
-                  axisNameWidget: Text('Point'),
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              lineBarsData: lineBars,
-            ),
-          ),
+          child: LineChart(_chartData(yBound: yBound, lineBars: lineBars)),
         ),
       ],
     );
