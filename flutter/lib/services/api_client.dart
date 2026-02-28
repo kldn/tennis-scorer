@@ -17,6 +17,7 @@ class ApiClient {
 
   static const _accessTokenKey = 'access_token';
   static const _refreshTokenKey = 'refresh_token';
+  static const _requestTimeout = Duration(seconds: 15);
 
   ApiClient({
     required this.baseUrl,
@@ -24,6 +25,10 @@ class ApiClient {
     FlutterSecureStorage? storage,
   })  : _httpClient = httpClient ?? http.Client(),
         _storage = storage ?? const FlutterSecureStorage();
+
+  void close() {
+    _httpClient.close();
+  }
 
   // MARK: - Auth
 
@@ -40,14 +45,18 @@ class ApiClient {
     );
   }
 
-  Future<String> refreshToken(String refreshToken) async {
+  Future<TokenPair> refreshToken(String refreshToken) async {
     final response = await _post(
       '/auth/refresh',
       body: {'refresh_token': refreshToken},
       authenticated: false,
     );
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return json['access_token'] as String;
+    final newRefreshToken = json['refresh_token'] as String?;
+    return TokenPair(
+      accessToken: json['access_token'] as String,
+      refreshToken: newRefreshToken ?? refreshToken,
+    );
   }
 
   // MARK: - Matches
@@ -79,10 +88,9 @@ class ApiClient {
   Future<http.Response> _get(String path) async {
     return _authenticatedRequest(() async {
       final token = await _storage.read(key: _accessTokenKey);
-      return _httpClient.get(
-        Uri.parse('$baseUrl$path'),
-        headers: _headers(token),
-      );
+      return _httpClient
+          .get(Uri.parse('$baseUrl$path'), headers: _headers(token))
+          .timeout(_requestTimeout);
     });
   }
 
@@ -92,22 +100,26 @@ class ApiClient {
     bool authenticated = true,
   }) async {
     if (!authenticated) {
-      final response = await _httpClient.post(
-        Uri.parse('$baseUrl$path'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
+      final response = await _httpClient
+          .post(
+            Uri.parse('$baseUrl$path'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_requestTimeout);
       _checkResponse(response);
       return response;
     }
 
     return _authenticatedRequest(() async {
       final token = await _storage.read(key: _accessTokenKey);
-      return _httpClient.post(
-        Uri.parse('$baseUrl$path'),
-        headers: _headers(token),
-        body: jsonEncode(body),
-      );
+      return _httpClient
+          .post(
+            Uri.parse('$baseUrl$path'),
+            headers: _headers(token),
+            body: jsonEncode(body),
+          )
+          .timeout(_requestTimeout);
     });
   }
 
@@ -132,8 +144,9 @@ class ApiClient {
     if (token == null) return false;
 
     try {
-      final newAccessToken = await refreshToken(token);
-      await _storage.write(key: _accessTokenKey, value: newAccessToken);
+      final tokens = await refreshToken(token);
+      await _storage.write(key: _accessTokenKey, value: tokens.accessToken);
+      await _storage.write(key: _refreshTokenKey, value: tokens.refreshToken);
       return true;
     } catch (_) {
       await _storage.delete(key: _accessTokenKey);
@@ -154,7 +167,14 @@ class ApiClient {
       throw ApiException(401, 'Unauthorized');
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(response.statusCode, response.body);
+      String message;
+      try {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        message = (json['message'] ?? json['error'] ?? 'Request failed') as String;
+      } catch (_) {
+        message = 'Request failed with status ${response.statusCode}';
+      }
+      throw ApiException(response.statusCode, message);
     }
   }
 }

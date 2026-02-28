@@ -160,22 +160,28 @@ pub async fn apple_auth(
         {
             Some(id) => id,
             None => {
-                sqlx::query_scalar::<_, uuid::Uuid>(
+                match sqlx::query_scalar::<_, uuid::Uuid>(
                     "INSERT INTO users (apple_user_id, email) VALUES ($1, $2) RETURNING id",
                 )
                 .bind(&apple_claims.sub)
                 .bind(&apple_claims.email)
                 .fetch_one(&state.pool)
                 .await
-                .map_err(|e| match e {
-                    sqlx::Error::Database(ref db_err)
+                {
+                    Ok(id) => id,
+                    Err(sqlx::Error::Database(ref db_err))
                         if db_err.constraint() == Some("users_apple_user_id_key") =>
                     {
-                        // Race condition: another request created the user
-                        AppError::Conflict("Apple user already exists".to_string())
+                        // Race condition: another request created the user, fetch it
+                        sqlx::query_scalar::<_, uuid::Uuid>(
+                            "SELECT id FROM users WHERE apple_user_id = $1",
+                        )
+                        .bind(&apple_claims.sub)
+                        .fetch_one(&state.pool)
+                        .await?
                     }
-                    other => AppError::from(other),
-                })?
+                    Err(other) => return Err(AppError::from(other)),
+                }
             }
         };
 

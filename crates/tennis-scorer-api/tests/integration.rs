@@ -929,8 +929,5 @@ async fn test_apple_auth_missing_field() {
         .await
         .unwrap();
     // Missing required field → 422
-    assert!(
-        resp.status() == StatusCode::UNPROCESSABLE_ENTITY
-            || resp.status() == StatusCode::BAD_REQUEST
-    );
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }

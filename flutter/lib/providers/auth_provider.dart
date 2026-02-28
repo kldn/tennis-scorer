@@ -4,10 +4,15 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 
-const _defaultBaseUrl = 'https://tennis-scorer-api-production.up.railway.app/api';
+const _defaultBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'https://tennis-scorer-api-production.up.railway.app/api',
+);
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  return ApiClient(baseUrl: _defaultBaseUrl);
+  final client = ApiClient(baseUrl: _defaultBaseUrl);
+  ref.onDispose(client.close);
+  return client;
 });
 
 final authServiceProvider = Provider<AuthService>((ref) {

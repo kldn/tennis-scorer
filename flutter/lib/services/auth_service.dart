@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
@@ -40,11 +41,19 @@ class AuthService {
     if (token == null) return null;
 
     try {
-      final newAccessToken = await _apiClient.refreshToken(token);
-      await _storage.write(key: _accessTokenKey, value: newAccessToken);
-      return newAccessToken;
-    } catch (_) {
-      await logout();
+      final tokens = await _apiClient.refreshToken(token);
+      await _saveTokens(tokens.accessToken, tokens.refreshToken);
+      return tokens.accessToken;
+    } on ApiException catch (e) {
+      // Only logout on auth rejection (401); transient errors should not force logout
+      if (e.statusCode == 401) {
+        debugPrint('Refresh token rejected (401), logging out');
+        await logout();
+      }
+      return null;
+    } catch (e) {
+      // Network/timeout errors — don't logout
+      debugPrint('Token refresh failed (transient): $e');
       return null;
     }
   }

@@ -1,10 +1,4 @@
-// Integration test stubs for the Flutter app.
-//
-// Full integration tests require:
-// 1. A running API backend
-// 2. A valid Apple Sign In context (simulator or device)
-//
-// These tests verify widget structure with mocked auth state.
+// Unit tests for Flutter app models.
 //
 // Run with: flutter test
 
@@ -12,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tennis_scorer/models/match_model.dart';
 import 'package:tennis_scorer/models/momentum_data.dart';
-import 'package:tennis_scorer/models/match_analysis.dart';
 
 void main() {
   group('MatchModel', () {
@@ -53,6 +46,41 @@ void main() {
 
       final match = MatchModel.fromJson(json);
       expect(match.isWin, false);
+    });
+
+    test('handles null winner (match in progress)', () {
+      final json = {
+        'id': 'in-progress',
+        'match_type': 'singles',
+        'config': {},
+        'winner': null,
+        'player1_sets': 1,
+        'player2_sets': 1,
+        'started_at': '2026-02-06T10:00:00Z',
+        'ended_at': null,
+        'created_at': '2026-02-06T10:00:00Z',
+      };
+
+      final match = MatchModel.fromJson(json);
+      expect(match.isWin, false);
+      expect(match.scoreDisplay, '1 - 1');
+    });
+
+    test('handles missing optional fields', () {
+      final json = {
+        'id': 'minimal',
+        'match_type': 'singles',
+        'config': {},
+        'winner': 1,
+        'player1_sets': 2,
+        'player2_sets': 0,
+        'started_at': '2026-02-06T10:00:00Z',
+        'created_at': '2026-02-06T10:00:00Z',
+      };
+
+      final match = MatchModel.fromJson(json);
+      expect(match.clientId, isNull);
+      expect(match.endedAt, isNull);
     });
   });
 
@@ -101,6 +129,17 @@ void main() {
       expect(data.weighted.length, 3);
       expect(data.perSetBasic.length, 2);
       expect(data.perSetWeighted.length, 2);
+    });
+
+    test('throws FormatException on invalid data', () {
+      final json = {
+        'basic': 'not a list',
+        'weighted': [1.0],
+        'per_set_basic': [],
+        'per_set_weighted': [],
+      };
+
+      expect(() => MomentumData.fromJson(json), throwsFormatException);
     });
   });
 }

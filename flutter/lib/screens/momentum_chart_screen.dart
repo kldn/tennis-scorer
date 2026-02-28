@@ -1,4 +1,5 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,7 +20,10 @@ class MomentumChartScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Momentum')),
       body: momentumAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('載入失敗: $err')),
+        error: (err, _) {
+          debugPrint('Momentum load error: $err');
+          return const Center(child: Text('載入失敗，請稍後再試'));
+        },
         data: (data) => _ChartContent(data: data, mode: currentMode, ref: ref),
       ),
     );

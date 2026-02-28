@@ -73,7 +73,8 @@ class MatchListScreen extends ConsumerWidget {
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification is ScrollEndNotification &&
-              notification.metrics.extentAfter < 200) {
+              notification.metrics.extentAfter < 200 &&
+              !state.isLoadingMore) {
             ref.read(matchListProvider.notifier).loadMore();
           }
           return false;

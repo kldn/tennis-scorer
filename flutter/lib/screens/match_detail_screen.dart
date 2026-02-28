@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../models/match_analysis.dart';
@@ -20,7 +21,10 @@ class MatchDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('比賽詳情')),
       body: detailAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('載入失敗: $err')),
+        error: (err, _) {
+          debugPrint('MatchDetail load error: $err');
+          return const Center(child: Text('載入失敗，請稍後再試'));
+        },
         data: (state) {
           final match = state.match;
           final analysis = state.analysis;

@@ -12,18 +12,27 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
 
   return GoRouter(
-    initialLocation: '/matches',
+    initialLocation: '/loading',
     redirect: (context, state) {
       final isAuthenticated = authState.status == AuthStatus.authenticated;
       final isLoggingIn = state.matchedLocation == '/login';
+      final isLoading = state.matchedLocation == '/loading';
 
-      if (authState.status == AuthStatus.unknown) return null;
+      if (authState.status == AuthStatus.unknown) {
+        return isLoading ? null : '/loading';
+      }
 
       if (!isAuthenticated && !isLoggingIn) return '/login';
-      if (isAuthenticated && isLoggingIn) return '/matches';
+      if (isAuthenticated && (isLoggingIn || isLoading)) return '/matches';
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/loading',
+        builder: (context, state) => const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),

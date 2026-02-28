@@ -14,15 +14,8 @@ final statsRepositoryProvider = Provider<StatsRepository>((ref) {
 class MatchDetailState {
   final MatchModel? match;
   final MatchAnalysis? analysis;
-  final bool isLoading;
-  final String? error;
 
-  const MatchDetailState({
-    this.match,
-    this.analysis,
-    this.isLoading = false,
-    this.error,
-  });
+  const MatchDetailState({this.match, this.analysis});
 }
 
 final matchDetailProvider = FutureProvider.family<MatchDetailState, String>((ref, matchId) async {

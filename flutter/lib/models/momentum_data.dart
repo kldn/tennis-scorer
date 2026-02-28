@@ -11,16 +11,25 @@ class MomentumData {
     required this.perSetWeighted,
   });
 
+  static List<double> _toDoubleList(dynamic value, String key) {
+    if (value is! List) throw FormatException('Invalid momentum field: $key');
+    return value.map((e) => (e as num).toDouble()).toList();
+  }
+
+  static List<List<double>> _toDoubleMatrix(dynamic value, String key) {
+    if (value is! List) throw FormatException('Invalid momentum field: $key');
+    return value.map((set) {
+      if (set is! List) throw FormatException('Invalid momentum set in: $key');
+      return set.map((e) => (e as num).toDouble()).toList();
+    }).toList();
+  }
+
   factory MomentumData.fromJson(Map<String, dynamic> json) {
     return MomentumData(
-      basic: (json['basic'] as List).map((e) => (e as num).toDouble()).toList(),
-      weighted: (json['weighted'] as List).map((e) => (e as num).toDouble()).toList(),
-      perSetBasic: (json['per_set_basic'] as List)
-          .map((set) => (set as List).map((e) => (e as num).toDouble()).toList())
-          .toList(),
-      perSetWeighted: (json['per_set_weighted'] as List)
-          .map((set) => (set as List).map((e) => (e as num).toDouble()).toList())
-          .toList(),
+      basic: _toDoubleList(json['basic'], 'basic'),
+      weighted: _toDoubleList(json['weighted'], 'weighted'),
+      perSetBasic: _toDoubleMatrix(json['per_set_basic'], 'per_set_basic'),
+      perSetWeighted: _toDoubleMatrix(json['per_set_weighted'], 'per_set_weighted'),
     );
   }
 }

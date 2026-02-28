@@ -55,7 +55,9 @@ struct AuthView: View {
             }
 
         case .failure(let error):
-            if (error as NSError).code == ASAuthorizationError.canceled.rawValue {
+            let nsError = error as NSError
+            if nsError.domain == ASAuthorizationError.errorDomain
+                && nsError.code == ASAuthorizationError.canceled.rawValue {
                 // User cancelled — do nothing
                 return
             }

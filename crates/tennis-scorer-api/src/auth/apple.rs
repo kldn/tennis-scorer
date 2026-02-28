@@ -1,12 +1,14 @@
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde::Deserialize;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 use crate::error::AppError;
 
 const APPLE_JWKS_URL: &str = "https://appleid.apple.com/auth/keys";
 const APPLE_ISSUER: &str = "https://appleid.apple.com";
+const JWKS_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Deserialize)]
 struct JwkSet {
@@ -38,20 +40,34 @@ pub struct AppleTokenVerifier {
 
 impl AppleTokenVerifier {
     pub fn new(bundle_id: String) -> Self {
+        let http_client = reqwest::Client::builder()
+            .timeout(JWKS_TIMEOUT)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
         Self {
             bundle_id,
             cached_keys: Arc::new(RwLock::new(None)),
-            http_client: reqwest::Client::new(),
+            http_client,
         }
     }
 
     async fn fetch_keys(&self) -> Result<Vec<Jwk>, AppError> {
-        let jwk_set: JwkSet = self
+        let response = self
             .http_client
             .get(APPLE_JWKS_URL)
             .send()
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to fetch Apple JWKS: {e}")))?
+            .map_err(|e| AppError::Internal(format!("Failed to fetch Apple JWKS: {e}")))?;
+
+        if !response.status().is_success() {
+            return Err(AppError::Internal(format!(
+                "Apple JWKS returned status {}",
+                response.status()
+            )));
+        }
+
+        let jwk_set: JwkSet = response
             .json()
             .await
             .map_err(|e| AppError::Internal(format!("Failed to parse Apple JWKS: {e}")))?;
@@ -96,13 +112,26 @@ impl AppleTokenVerifier {
 
         // Try with cached keys first
         let keys = self.get_keys(false).await?;
-        if let Some(jwk) = keys.iter().find(|k| k.kid == kid && k.kty == "RSA")
-            && let Ok(claims) = self.decode_with_key(identity_token, jwk)
-        {
-            return Ok(claims);
+        if let Some(jwk) = keys.iter().find(|k| k.kid == kid && k.kty == "RSA") {
+            match self.decode_with_key(identity_token, jwk) {
+                Ok(claims) => return Ok(claims),
+                Err(e) => {
+                    // Only refresh JWKS on signature errors; other errors
+                    // (expired, wrong audience/issuer) won't be fixed by new keys
+                    if !matches!(
+                        e.kind(),
+                        jsonwebtoken::errors::ErrorKind::InvalidSignature
+                            | jsonwebtoken::errors::ErrorKind::InvalidRsaKey(_)
+                    ) {
+                        return Err(AppError::Unauthorized(
+                            "Invalid Apple identity token".to_string(),
+                        ));
+                    }
+                }
+            }
         }
 
-        // Refresh keys and retry
+        // Refresh keys and retry (key rotation or missing kid)
         let keys = self.get_keys(true).await?;
         let jwk = keys
             .iter()
