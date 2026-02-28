@@ -1,0 +1,4 @@
+ALTER TABLE users
+    ADD COLUMN apple_user_id TEXT UNIQUE,
+    ALTER COLUMN email DROP NOT NULL,
+    ALTER COLUMN password_hash DROP NOT NULL;

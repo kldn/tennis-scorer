@@ -1,24 +1,16 @@
+import AuthenticationServices
 import SwiftUI
 
 struct AuthView: View {
     @Binding var isLoggedIn: Bool
-    @State private var email = ""
-    @State private var password = ""
-    @State private var isRegistering = false
     @State private var errorMessage: String?
     @State private var isLoading = false
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 12) {
-                Text(isRegistering ? "註冊" : "登入")
+            VStack(spacing: 16) {
+                Text("登入")
                     .font(.headline)
-
-                TextField("Email", text: $email)
-                    .textContentType(.emailAddress)
-
-                SecureField("密碼", text: $password)
-                    .textContentType(isRegistering ? .newPassword : .password)
 
                 if let error = errorMessage {
                     Text(error)
@@ -27,37 +19,47 @@ struct AuthView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Button(isRegistering ? "註冊" : "登入") {
-                    Task { await authenticate() }
+                SignInWithAppleButton(.signIn) { request in
+                    request.requestedScopes = [.email]
+                } onCompletion: { result in
+                    Task { await handleAppleSignIn(result) }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isLoading || email.isEmpty || password.isEmpty)
-
-                Button(isRegistering ? "已有帳號？登入" : "沒有帳號？註冊") {
-                    isRegistering.toggle()
-                    errorMessage = nil
-                }
-                .font(.caption2)
-                .foregroundColor(.secondary)
+                .signInWithAppleButtonStyle(.white)
+                .frame(height: 45)
             }
             .padding()
         }
+        .disabled(isLoading)
     }
 
-    private func authenticate() async {
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
-        do {
-            if isRegistering {
-                let _ = try await APIClient.shared.register(email: email, password: password)
-            } else {
-                let _ = try await APIClient.shared.login(email: email, password: password)
+        switch result {
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let identityTokenData = credential.identityToken,
+                  let identityToken = String(data: identityTokenData, encoding: .utf8)
+            else {
+                errorMessage = "無法取得 Apple 認證資訊"
+                return
             }
-            isLoggedIn = true
-        } catch {
-            errorMessage = isRegistering ? "註冊失敗，請重試" : "登入失敗，請檢查帳號密碼"
+
+            do {
+                let _ = try await APIClient.shared.loginWithApple(identityToken: identityToken)
+                isLoggedIn = true
+            } catch {
+                errorMessage = "登入失敗，請重試"
+            }
+
+        case .failure(let error):
+            if (error as NSError).code == ASAuthorizationError.canceled.rawValue {
+                // User cancelled — do nothing
+                return
+            }
+            errorMessage = "Apple 登入失敗"
         }
     }
 }

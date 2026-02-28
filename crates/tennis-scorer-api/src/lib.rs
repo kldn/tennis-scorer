@@ -15,12 +15,14 @@ use crate::config::AppConfig;
 pub struct AppState {
     pub pool: PgPool,
     pub jwt_secret: String,
+    pub apple_bundle_id: String,
 }
 
 pub fn create_router(pool: PgPool, config: &AppConfig) -> Router {
     let state = AppState {
         pool,
         jwt_secret: config.jwt_secret.clone(),
+        apple_bundle_id: config.apple_bundle_id.clone(),
     };
 
     let cors = if config.allowed_origins.is_empty() {

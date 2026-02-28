@@ -47,6 +47,22 @@ actor APIClient {
         return (accessToken, refreshToken)
     }
 
+    func loginWithApple(identityToken: String) async throws -> (accessToken: String, refreshToken: String) {
+        let body: [String: String] = ["identity_token": identityToken]
+        let data = try await request("POST", path: "/auth/apple", body: body, authenticated: false)
+
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let accessToken = json?["access_token"] as? String,
+              let refreshToken = json?["refresh_token"] as? String else {
+            throw APIError.invalidResponse
+        }
+
+        KeychainHelper.accessToken = accessToken
+        KeychainHelper.refreshToken = refreshToken
+
+        return (accessToken, refreshToken)
+    }
+
     func refreshAccessToken() async throws -> String {
         guard let refreshToken = KeychainHelper.refreshToken else {
             throw APIError.unauthorized

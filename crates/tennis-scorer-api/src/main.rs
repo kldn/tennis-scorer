@@ -28,9 +28,13 @@ async fn main() {
         .map(|s| s.split(',').map(|o| o.trim().to_string()).collect())
         .unwrap_or_default();
 
+    let apple_bundle_id =
+        std::env::var("APPLE_BUNDLE_ID").unwrap_or_else(|_| "com.tennisscorer".into());
+
     let config = AppConfig {
         jwt_secret,
         allowed_origins,
+        apple_bundle_id,
     };
     let app = tennis_scorer_api::create_router(pool, &config);
 
