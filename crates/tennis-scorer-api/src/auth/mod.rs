@@ -1,3 +1,4 @@
+pub mod apple;
 pub mod handlers;
 pub mod jwt;
 pub mod middleware;
@@ -10,4 +11,5 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/register", post(handlers::register))
         .route("/auth/login", post(handlers::login))
         .route("/auth/refresh", post(handlers::refresh))
+        .route("/auth/apple", post(handlers::apple_auth))
 }

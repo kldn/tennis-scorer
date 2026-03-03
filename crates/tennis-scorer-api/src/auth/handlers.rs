@@ -137,3 +137,66 @@ pub async fn refresh(
 
     Ok(Json(AccessTokenResponse { access_token }))
 }
+
+#[derive(Deserialize)]
+pub struct AppleAuthRequest {
+    pub identity_token: String,
+}
+
+pub async fn apple_auth(
+    State(state): State<AppState>,
+    Json(req): Json<AppleAuthRequest>,
+) -> Result<Json<TokenResponse>, AppError> {
+    let apple_claims = state.apple_verifier.verify(&req.identity_token).await?;
+
+    // Find or create user by apple_user_id
+    let user_id: uuid::Uuid =
+        match sqlx::query_scalar::<_, uuid::Uuid>("SELECT id FROM users WHERE apple_user_id = $1")
+            .bind(&apple_claims.sub)
+            .fetch_optional(&state.pool)
+            .await?
+        {
+            Some(id) => id,
+            None => {
+                match sqlx::query_scalar::<_, uuid::Uuid>(
+                    "INSERT INTO users (apple_user_id, email) VALUES ($1, $2) RETURNING id",
+                )
+                .bind(&apple_claims.sub)
+                .bind(&apple_claims.email)
+                .fetch_one(&state.pool)
+                .await
+                {
+                    Ok(id) => id,
+                    Err(sqlx::Error::Database(ref db_err))
+                        if db_err.constraint() == Some("users_apple_user_id_key") =>
+                    {
+                        // Race condition: another request created the user, fetch it
+                        sqlx::query_scalar::<_, uuid::Uuid>(
+                            "SELECT id FROM users WHERE apple_user_id = $1",
+                        )
+                        .bind(&apple_claims.sub)
+                        .fetch_one(&state.pool)
+                        .await?
+                    }
+                    Err(sqlx::Error::Database(ref db_err))
+                        if db_err.constraint() == Some("users_email_key") =>
+                    {
+                        return Err(AppError::Conflict(
+                            "Email already registered with another account".to_string(),
+                        ));
+                    }
+                    Err(other) => return Err(AppError::from(other)),
+                }
+            }
+        };
+
+    let access_token = jwt::create_access_token(user_id, &state.jwt_secret)
+        .map_err(|e| AppError::Internal(format!("Token creation failed: {e}")))?;
+    let refresh_token = jwt::create_refresh_token(user_id, &state.jwt_secret)
+        .map_err(|e| AppError::Internal(format!("Token creation failed: {e}")))?;
+
+    Ok(Json(TokenResponse {
+        access_token,
+        refresh_token,
+    }))
+}

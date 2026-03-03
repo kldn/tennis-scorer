@@ -34,6 +34,7 @@ async fn setup() -> axum::Router {
     let config = AppConfig {
         jwt_secret,
         allowed_origins: Vec::new(),
+        apple_bundle_id: "com.tennisscorer.test".to_string(),
     };
 
     let pool = tennis_scorer_api::db::create_pool(&database_url)
@@ -45,6 +46,7 @@ async fn setup() -> axum::Router {
         include_str!("../migrations/001_create_users.sql"),
         include_str!("../migrations/002_create_matches.sql"),
         include_str!("../migrations/003_create_match_events.sql"),
+        include_str!("../migrations/004_add_apple_auth.sql"),
     ] {
         sqlx::query(sql)
             .execute(&pool)
@@ -876,4 +878,56 @@ async fn test_cross_user_isolation() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ---------------------------------------------------------------------------
+// Apple auth -- invalid token
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn test_apple_auth_invalid_token() {
+    let app = setup().await;
+
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/auth/apple",
+            json!({"identity_token": "not-a-valid-jwt"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_apple_auth_empty_token() {
+    let app = setup().await;
+
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/auth/apple",
+            json!({"identity_token": ""}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_apple_auth_missing_field() {
+    let app = setup().await;
+
+    let resp = app
+        .clone()
+        .oneshot(json_request("POST", "/api/auth/apple", json!({})))
+        .await
+        .unwrap();
+    // Missing required field → 422
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
