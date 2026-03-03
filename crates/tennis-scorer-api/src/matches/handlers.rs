@@ -29,7 +29,7 @@ pub async fn create_match_debug(
         Some(id) => id,
         None => {
             sqlx::query_scalar::<_, Uuid>(
-                "INSERT INTO users (email, password_hash) VALUES ('debug@localhost', 'debug') RETURNING id",
+                "INSERT INTO users (firebase_uid, email, display_name) VALUES ('debug_local', 'debug@localhost', 'Debug User') RETURNING id",
             )
             .fetch_one(&state.pool)
             .await?
