@@ -1,7 +1,7 @@
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde::Deserialize;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::error::AppError;
@@ -9,6 +9,7 @@ use crate::error::AppError;
 const APPLE_JWKS_URL: &str = "https://appleid.apple.com/auth/keys";
 const APPLE_ISSUER: &str = "https://appleid.apple.com";
 const JWKS_TIMEOUT: Duration = Duration::from_secs(5);
+const JWKS_CACHE_TTL: Duration = Duration::from_secs(3600);
 
 #[derive(Debug, Deserialize)]
 struct JwkSet {
@@ -29,12 +30,18 @@ pub struct AppleIdTokenClaims {
     pub email: Option<String>,
     pub iss: String,
     pub aud: String,
+    pub nonce: Option<String>,
+}
+
+struct CachedKeys {
+    keys: Vec<Jwk>,
+    fetched_at: Instant,
 }
 
 #[derive(Clone)]
 pub struct AppleTokenVerifier {
     bundle_id: String,
-    cached_keys: Arc<RwLock<Option<Vec<Jwk>>>>,
+    cached_keys: Arc<RwLock<Option<CachedKeys>>>,
     http_client: reqwest::Client,
 }
 
@@ -77,19 +84,28 @@ impl AppleTokenVerifier {
     async fn get_keys(&self, force_refresh: bool) -> Result<Vec<Jwk>, AppError> {
         if !force_refresh {
             let cached = self.cached_keys.read().await;
-            if let Some(keys) = cached.as_ref() {
-                return Ok(keys.clone());
+            if let Some(entry) = cached.as_ref() {
+                if entry.fetched_at.elapsed() < JWKS_CACHE_TTL {
+                    return Ok(entry.keys.clone());
+                }
             }
         }
 
         // Double-checked locking: re-check under write lock to avoid parallel fetches
         let mut cache = self.cached_keys.write().await;
-        if !force_refresh && let Some(keys) = cache.as_ref() {
-            return Ok(keys.clone());
+        if !force_refresh {
+            if let Some(entry) = cache.as_ref() {
+                if entry.fetched_at.elapsed() < JWKS_CACHE_TTL {
+                    return Ok(entry.keys.clone());
+                }
+            }
         }
 
         let keys = self.fetch_keys().await?;
-        *cache = Some(keys.clone());
+        *cache = Some(CachedKeys {
+            keys: keys.clone(),
+            fetched_at: Instant::now(),
+        });
         Ok(keys)
     }
 
@@ -107,7 +123,27 @@ impl AppleTokenVerifier {
         Ok(token_data.claims)
     }
 
-    pub async fn verify(&self, identity_token: &str) -> Result<AppleIdTokenClaims, AppError> {
+    fn validate_nonce(
+        claims: &AppleIdTokenClaims,
+        expected_nonce: Option<&str>,
+    ) -> Result<(), AppError> {
+        if let Some(expected) = expected_nonce {
+            match claims.nonce.as_deref() {
+                Some(actual) if actual == expected => Ok(()),
+                _ => Err(AppError::Unauthorized(
+                    "Nonce mismatch in Apple identity token".to_string(),
+                )),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    pub async fn verify(
+        &self,
+        identity_token: &str,
+        expected_nonce: Option<&str>,
+    ) -> Result<AppleIdTokenClaims, AppError> {
         let header = decode_header(identity_token)
             .map_err(|_| AppError::Unauthorized("Invalid Apple identity token".to_string()))?;
 
@@ -119,7 +155,10 @@ impl AppleTokenVerifier {
         let keys = self.get_keys(false).await?;
         if let Some(jwk) = keys.iter().find(|k| k.kid == kid && k.kty == "RSA") {
             match self.decode_with_key(identity_token, jwk) {
-                Ok(claims) => return Ok(claims),
+                Ok(claims) => {
+                    Self::validate_nonce(&claims, expected_nonce)?;
+                    return Ok(claims);
+                }
                 Err(e) => {
                     // Only refresh JWKS on signature errors; other errors
                     // (expired, wrong audience/issuer) won't be fixed by new keys
@@ -143,7 +182,10 @@ impl AppleTokenVerifier {
             .find(|k| k.kid == kid && k.kty == "RSA")
             .ok_or_else(|| AppError::Unauthorized("No matching Apple key found".to_string()))?;
 
-        self.decode_with_key(identity_token, jwk)
-            .map_err(|_| AppError::Unauthorized("Invalid Apple identity token".to_string()))
+        let claims = self
+            .decode_with_key(identity_token, jwk)
+            .map_err(|_| AppError::Unauthorized("Invalid Apple identity token".to_string()))?;
+        Self::validate_nonce(&claims, expected_nonce)?;
+        Ok(claims)
     }
 }

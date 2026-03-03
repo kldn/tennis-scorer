@@ -1,11 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/momentum_data.dart';
+import '../models/pace_data.dart';
 import '../providers/momentum_provider.dart';
 
 class MomentumChartScreen extends ConsumerWidget {
@@ -16,20 +16,33 @@ class MomentumChartScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final momentumAsync = ref.watch(momentumDataProvider(matchId));
+    final paceAsync = ref.watch(paceDataProvider(matchId));
     final currentMode = ref.watch(momentumModeProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Momentum')),
+      appBar: AppBar(title: const Text('分析')),
       body: momentumAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) {
           debugPrint('Momentum load error: $err');
           return const Center(child: Text('載入失敗，請稍後再試'));
         },
-        data: (data) => _ChartContent(
-          data: data,
-          mode: currentMode,
-          onModeChanged: (m) => ref.read(momentumModeProvider.notifier).state = m,
+        data: (data) => ListView(
+          children: [
+            _ChartContent(
+              data: data,
+              mode: currentMode,
+              onModeChanged: (m) => ref.read(momentumModeProvider.notifier).state = m,
+            ),
+            paceAsync.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (pace) => _PaceSection(pace: pace),
+            ),
+          ],
         ),
       ),
     );
@@ -50,6 +63,7 @@ class _ChartContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         // Mode selector
         Padding(
@@ -66,7 +80,8 @@ class _ChartContent extends StatelessWidget {
           ),
         ),
         // Chart
-        Expanded(
+        SizedBox(
+          height: 300,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 16, 16),
             child: _buildChart(context),
@@ -209,6 +224,7 @@ class _ChartContent extends StatelessWidget {
     }
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         // Per-set legend
         Wrap(
@@ -221,7 +237,8 @@ class _ChartContent extends StatelessWidget {
           }),
         ),
         const SizedBox(height: 8),
-        Expanded(
+        SizedBox(
+          height: 240,
           child: LineChart(_chartData(yBound: yBound, lineBars: lineBars)),
         ),
       ],
@@ -248,6 +265,77 @@ class _LegendItem extends StatelessWidget {
         const SizedBox(width: 4),
         Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
+    );
+  }
+}
+
+class _PaceSection extends StatelessWidget {
+  final PaceData pace;
+
+  const _PaceSection({required this.pace});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('比賽節奏', style: theme.textTheme.titleMedium),
+              const Divider(),
+              _PaceRow(
+                label: '總時長',
+                value: pace.totalDurationDisplay,
+              ),
+              _PaceRow(
+                label: '平均每分間隔',
+                value: pace.averageIntervalDisplay,
+              ),
+              if (pace.perSetDurations.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('各盤時長', style: theme.textTheme.titleSmall),
+                const SizedBox(height: 4),
+                ...pace.perSetDurations.map((sd) {
+                  final mins = (sd.durationSeconds / 60).floor();
+                  return _PaceRow(
+                    label: '第 ${sd.setNumber} 盤',
+                    value: '${mins}m',
+                  );
+                }),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaceRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _PaceRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
     );
   }
 }
