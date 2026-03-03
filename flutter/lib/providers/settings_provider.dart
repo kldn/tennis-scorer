@@ -73,7 +73,7 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
       await _apiClient.putNotificationSettings(updated.toJson());
     } catch (e) {
       debugPrint('Failed to update notification settings: $e');
-      if (mounted) state = previous;
+      if (mounted && identical(state, updated)) state = previous;
     }
   }
 }

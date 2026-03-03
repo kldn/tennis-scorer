@@ -37,6 +37,7 @@ class MatchListScreen extends ConsumerWidget {
       return RefreshIndicator(
         onRefresh: () => ref.read(matchListProvider.notifier).refresh(),
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: const [
             SizedBox(height: 120),
             Center(
@@ -61,6 +62,7 @@ class MatchListScreen extends ConsumerWidget {
           return false;
         },
         child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           itemCount: state.matches.length + (state.isLoadingMore ? 1 : 0),
           itemBuilder: (context, index) {
             if (index == state.matches.length) {

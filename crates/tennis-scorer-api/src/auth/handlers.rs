@@ -147,7 +147,7 @@ pub async fn apple_auth(
     State(state): State<AppState>,
     Json(req): Json<AppleAuthRequest>,
 ) -> Result<Json<TokenResponse>, AppError> {
-    let apple_claims = state.apple_verifier.verify(&req.identity_token).await?;
+    let apple_claims = state.apple_verifier.verify(&req.identity_token, None).await?;
 
     // Find or create user by apple_user_id
     let user_id: uuid::Uuid =

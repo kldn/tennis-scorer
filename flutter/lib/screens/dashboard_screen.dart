@@ -50,6 +50,7 @@ class DashboardScreen extends ConsumerWidget {
         ]);
       },
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           _SummaryCard(summary: summary),
@@ -68,6 +69,7 @@ class DashboardScreen extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () => ref.read(dashboardProvider.notifier).refresh(),
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: 120),
           Center(child: EmptyMatchesPlaceholder()),

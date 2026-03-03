@@ -29,6 +29,7 @@ pub struct AppleIdTokenClaims {
     pub email: Option<String>,
     pub iss: String,
     pub aud: String,
+    pub nonce: Option<String>,
 }
 
 #[derive(Clone)]
@@ -107,7 +108,27 @@ impl AppleTokenVerifier {
         Ok(token_data.claims)
     }
 
-    pub async fn verify(&self, identity_token: &str) -> Result<AppleIdTokenClaims, AppError> {
+    fn validate_nonce(
+        claims: &AppleIdTokenClaims,
+        expected_nonce: Option<&str>,
+    ) -> Result<(), AppError> {
+        if let Some(expected) = expected_nonce {
+            match claims.nonce.as_deref() {
+                Some(actual) if actual == expected => Ok(()),
+                _ => Err(AppError::Unauthorized(
+                    "Nonce mismatch in Apple identity token".to_string(),
+                )),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    pub async fn verify(
+        &self,
+        identity_token: &str,
+        expected_nonce: Option<&str>,
+    ) -> Result<AppleIdTokenClaims, AppError> {
         let header = decode_header(identity_token)
             .map_err(|_| AppError::Unauthorized("Invalid Apple identity token".to_string()))?;
 
@@ -119,7 +140,10 @@ impl AppleTokenVerifier {
         let keys = self.get_keys(false).await?;
         if let Some(jwk) = keys.iter().find(|k| k.kid == kid && k.kty == "RSA") {
             match self.decode_with_key(identity_token, jwk) {
-                Ok(claims) => return Ok(claims),
+                Ok(claims) => {
+                    Self::validate_nonce(&claims, expected_nonce)?;
+                    return Ok(claims);
+                }
                 Err(e) => {
                     // Only refresh JWKS on signature errors; other errors
                     // (expired, wrong audience/issuer) won't be fixed by new keys
@@ -143,7 +167,10 @@ impl AppleTokenVerifier {
             .find(|k| k.kid == kid && k.kty == "RSA")
             .ok_or_else(|| AppError::Unauthorized("No matching Apple key found".to_string()))?;
 
-        self.decode_with_key(identity_token, jwk)
-            .map_err(|_| AppError::Unauthorized("Invalid Apple identity token".to_string()))
+        let claims = self
+            .decode_with_key(identity_token, jwk)
+            .map_err(|_| AppError::Unauthorized("Invalid Apple identity token".to_string()))?;
+        Self::validate_nonce(&claims, expected_nonce)?;
+        Ok(claims)
     }
 }

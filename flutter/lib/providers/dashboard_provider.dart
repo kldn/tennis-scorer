@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/match_model.dart';
@@ -48,8 +49,9 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       if (!mounted) return;
       state = DashboardState(summary: summary);
     } catch (e) {
+      debugPrint('Dashboard fetch error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: '載入失敗，請稍後再試');
     }
   }
 }
