@@ -7,4 +7,4 @@ CREATE TABLE IF NOT EXISTS match_events (
     UNIQUE(match_id, point_number)
 );
 
-CREATE INDEX idx_match_events_match_id ON match_events(match_id);
+CREATE INDEX IF NOT EXISTS idx_match_events_match_id ON match_events(match_id);

@@ -9,23 +9,24 @@ use axum::Router;
 use sqlx::PgPool;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
-use crate::auth::apple::AppleTokenVerifier;
+use crate::auth::firebase::FirebaseTokenVerifier;
 use crate::config::AppConfig;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
-    pub jwt_secret: String,
-    pub apple_verifier: AppleTokenVerifier,
+    pub firebase_verifier: FirebaseTokenVerifier,
 }
 
 pub fn create_router(pool: PgPool, config: &AppConfig) -> Router {
     let state = AppState {
         pool,
-        jwt_secret: config.jwt_secret.clone(),
-        apple_verifier: AppleTokenVerifier::new(config.apple_bundle_id.clone()),
+        firebase_verifier: FirebaseTokenVerifier::new(config.firebase_project_id.clone()),
     };
+    create_router_with_state(state, config)
+}
 
+pub fn create_router_with_state(state: AppState, config: &AppConfig) -> Router {
     let cors = if config.allowed_origins.is_empty() {
         CorsLayer::new()
             .allow_origin(Any)
