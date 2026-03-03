@@ -1,7 +1,7 @@
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde::Deserialize;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::error::AppError;
@@ -9,6 +9,7 @@ use crate::error::AppError;
 const APPLE_JWKS_URL: &str = "https://appleid.apple.com/auth/keys";
 const APPLE_ISSUER: &str = "https://appleid.apple.com";
 const JWKS_TIMEOUT: Duration = Duration::from_secs(5);
+const JWKS_CACHE_TTL: Duration = Duration::from_secs(3600);
 
 #[derive(Debug, Deserialize)]
 struct JwkSet {
@@ -32,10 +33,15 @@ pub struct AppleIdTokenClaims {
     pub nonce: Option<String>,
 }
 
+struct CachedKeys {
+    keys: Vec<Jwk>,
+    fetched_at: Instant,
+}
+
 #[derive(Clone)]
 pub struct AppleTokenVerifier {
     bundle_id: String,
-    cached_keys: Arc<RwLock<Option<Vec<Jwk>>>>,
+    cached_keys: Arc<RwLock<Option<CachedKeys>>>,
     http_client: reqwest::Client,
 }
 
@@ -78,19 +84,28 @@ impl AppleTokenVerifier {
     async fn get_keys(&self, force_refresh: bool) -> Result<Vec<Jwk>, AppError> {
         if !force_refresh {
             let cached = self.cached_keys.read().await;
-            if let Some(keys) = cached.as_ref() {
-                return Ok(keys.clone());
+            if let Some(entry) = cached.as_ref() {
+                if entry.fetched_at.elapsed() < JWKS_CACHE_TTL {
+                    return Ok(entry.keys.clone());
+                }
             }
         }
 
         // Double-checked locking: re-check under write lock to avoid parallel fetches
         let mut cache = self.cached_keys.write().await;
-        if !force_refresh && let Some(keys) = cache.as_ref() {
-            return Ok(keys.clone());
+        if !force_refresh {
+            if let Some(entry) = cache.as_ref() {
+                if entry.fetched_at.elapsed() < JWKS_CACHE_TTL {
+                    return Ok(entry.keys.clone());
+                }
+            }
         }
 
         let keys = self.fetch_keys().await?;
-        *cache = Some(keys.clone());
+        *cache = Some(CachedKeys {
+            keys: keys.clone(),
+            fetched_at: Instant::now(),
+        });
         Ok(keys)
     }
 
