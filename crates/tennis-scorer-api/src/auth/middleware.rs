@@ -1,5 +1,6 @@
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+use tracing::error;
 use uuid::Uuid;
 
 use super::firebase::FirebaseClaims;
@@ -27,7 +28,10 @@ impl FromRequestParts<AppState> for AuthUser {
                 .bind(claims.firebase_uid())
                 .fetch_optional(&state.pool)
                 .await
-                .map_err(|e| AppError::Internal(format!("Database error: {e}")))?;
+                .map_err(|e| {
+                    error!(error = %e, firebase_uid = claims.firebase_uid(), "Failed to look up user");
+                    AppError::Internal("Database error".to_string())
+                })?;
 
         let user_id = user_id.ok_or_else(|| {
             AppError::Unauthorized("User not found. Call PUT /api/auth/me first.".to_string())

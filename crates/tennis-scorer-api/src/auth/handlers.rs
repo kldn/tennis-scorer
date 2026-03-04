@@ -31,9 +31,9 @@ pub async fn upsert_me(
         "INSERT INTO users (firebase_uid, email, display_name, avatar_url)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (firebase_uid) DO UPDATE
-         SET email = EXCLUDED.email,
-             display_name = EXCLUDED.display_name,
-             avatar_url = EXCLUDED.avatar_url
+         SET email = COALESCE(EXCLUDED.email, users.email),
+             display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+             avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url)
          RETURNING id, email, display_name, avatar_url",
     )
     .bind(firebase_uid)
