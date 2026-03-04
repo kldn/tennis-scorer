@@ -3,72 +3,233 @@
 //! Run with:
 //! ```sh
 //! DATABASE_URL=postgres://user:pass@localhost/tennis_scorer_test \
-//! JWT_SECRET=test-secret \
+//! FIREBASE_PROJECT_ID=test-project \
 //! cargo test --test integration -- --ignored
 //! ```
 //!
 //! All tests are marked `#[ignore]` so that a plain `cargo test` does not
 //! fail when no database is available.
+//!
+//! ## Mock Firebase Token
+//!
+//! Tests use a mock RSA key pair to sign Firebase-style JWTs locally.
+//! The `FirebaseTokenVerifier` fetches Google certs on first use, but in
+//! tests we inject pre-cached certs via the verifier so no network call
+//! is needed.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
+use chrono::{Duration, Utc};
 use http_body_util::BodyExt;
+use jsonwebtoken::{EncodingKey, Header, encode};
+use serde::Serialize;
 use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tower::ServiceExt;
 
+use tennis_scorer_api::AppState;
+use tennis_scorer_api::auth::firebase::FirebaseTokenVerifier;
 use tennis_scorer_api::config::AppConfig;
-use tennis_scorer_api::create_router;
+
+// ---------------------------------------------------------------------------
+// RSA key pair for mock Firebase tokens (generated once, reused across tests)
+// ---------------------------------------------------------------------------
+
+const TEST_PROJECT_ID: &str = "test-project";
+const TEST_KID: &str = "test-key-1";
+
+// 2048-bit RSA private key in PKCS#8 PEM format (for signing test JWTs)
+const TEST_RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDP+T2UAhapy2X1
+zJqykgWdd/+kiqUFLZnj7uqhAkmw+PlDLPxC41uf8tZhllRCbHKWT4+QRjrAawtm
+Ud1DQK6oPAQf+eP9baQk5IiOfbz5oDPW6rT7QG4H1Rgd9cBaKcO3kW/WPxAM5u8M
+tYQUdMPV4iWPvuA71D5xZxVt3lQjhkCetY1GRHEXaGFpLO4HK8HjxHE8kTrW9mhG
+ZEeDI5HnlK8NDec1cAeqXKeC22ogNQcgApPjRmvfN0EE45ctDMbGO8ZNRoNIajYL
+Le63VXt6uivZs4BwbLc9icLGNlXMdk7o3vs3ih/7ITmi/TR7nl37TMHghqprjfu5
+F3XAjtXxAgMBAAECggEAHLJkh86999HkEMWZtvglJDRRpw+mc492Q5hM8ciSCIRi
+SJ2ldUlP9EMax75pg/zY1trFkX/PTYu3t/el00jSkM4vN4ZQqkB9vMV3/kllUQCF
+Bqu+K0kZpaUGveOSFh7bLbI4v1RWT6Fx7MwDHJt8BkA9NJd+82J290jlERLzgy8c
+V2Qtank6nFvcexo2Kq/UCEPdwsh2i2ZDBPfKDr8LA2d75NDb5GuvcKnIHqhfX4D0
+d9Wnzs5BWSEJ0e6pAMt/9AXxbN8Dtal7DmGNZWm/hhIGhxiQDDDgkKFjUpKKdcxk
+d2o1Y7XvBgG3Kk+UQeJ0QeSzUwKjxEn4ETdFxN6q0QKBgQD3oM6ssE7SuDNRgj2z
+kfUGDdiSD7QRKKOATXGK6Jorlbba64hqULCV8QqQAjCGBPm0NBcP0RqBDdvdoW6N
+QFv4AVblXKYXAjqcFxGqMuSgbiG3wT8iyazBVqh7gAvqd1euO2MYzJ3bmdhzPLO6
+jgtxKoQcXkOuTxbT0OW3De5O/QKBgQDXATpIGBQa8apogskIGUQEySgkLLdN3S5Y
+3O1xM30JDoE/yEUB/tUiDU7JKJyt0BcBB27aM+oQ039e419w0Mq3vSsoXont04AB
+6KgCE5/oRlSqE+TrSgoUt1mmgd+nXd8Q5pe/CJFRNK0njlLNXtGgOrfL4D/KzHFe
+6BJLOHXnBQKBgQDfHBwaq5/Za+2Q+u/s4w0JL2B5+XwcGal26E/tADYoHvRput1m
+LN1tu4fwyIg/uCvjmStOLPDcZkg7IEAjNGGoykwoy5k6EeAM0xwvZTto8NGgZpUk
+GuF0MUgMPgp+bpipewiGR5XTToIfEgo9g837YHs3tBb27nt6zTSsAfk9YQKBgQCp
+BQ4MHuGvTMvp3OastzABkyE7TuvLClWlBgijNRbWR9DTk1ysdOiYHF4TRRnmie+L
+n4xFfQpEr/8xWQ1uYrT6PHvxAGDt1ZaL6ZoqB8Ntldx416reTRYfswOHIhHwQJtb
+betdAh86924n6nqteBzTGVXjsCZ2BsIZGddHytrlAQKBgBiA1E8OpNDE+Ufx3WOx
+WOCdoqu5k95ld5OOv7gQ7Vg5vDWFdoKg+62kEFw6S6kZKQicXxGsaqlFQnfXSAnP
+/S74nRQKPyXln6Jt6A/roXC2Gq8FQOE2V0CDF2vA5IYCXx7oQs3/ETBViJsdxzoZ
+CmYCBfcZ9EWMuXdZt/eYmZlm
+-----END PRIVATE KEY-----";
+
+// Corresponding public certificate in X.509 PEM format (for verification)
+const TEST_RSA_CERT: &str = "-----BEGIN CERTIFICATE-----
+MIIDCTCCAfGgAwIBAgIURT7jO5M8G0kLYteYQt2FjqJv584wDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDMwMzEzNTcxMFoXDTM2MDIy
+OTEzNTcxMFowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAz/k9lAIWqctl9cyaspIFnXf/pIqlBS2Z4+7qoQJJsPj5
+Qyz8QuNbn/LWYZZUQmxylk+PkEY6wGsLZlHdQ0CuqDwEH/nj/W2kJOSIjn28+aAz
+1uq0+0BuB9UYHfXAWinDt5Fv1j8QDObvDLWEFHTD1eIlj77gO9Q+cWcVbd5UI4ZA
+nrWNRkRxF2hhaSzuByvB48RxPJE61vZoRmRHgyOR55SvDQ3nNXAHqlyngttqIDUH
+IAKT40Zr3zdBBOOXLQzGxjvGTUaDSGo2Cy3ut1V7eror2bOAcGy3PYnCxjZVzHZO
+6N77N4of+yE5ov00e55d+0zB4Iaqa437uRd1wI7V8QIDAQABo1MwUTAdBgNVHQ4E
+FgQU2gJgeG1I6z6wwTMI6B4GLcii88EwHwYDVR0jBBgwFoAU2gJgeG1I6z6wwTMI
+6B4GLcii88EwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAKQ1e
+hVS2p79YmAQUHNDmDlHi/lXqYCZ2tPC/qhBq3FSzi4418am0Ax32vmGVm/Naj0sn
+bLgUCIcG1DmPQAOnl0dRZZYyzds+LQU9YYOC2WVzqY2XTKTJXa+5ecPhoB3Sfyqu
+ryeLwfrxKECWJous5caZtm3spWuDcHOSJfjRLVD8ByKxAB8bBSKKNJyAMaDdR0hU
+9CRrZi8EQmFF6wbCd7OiIxtg+gKFck6J3OAeVbqOVnMKdiM7aAbRiplJATRUxbLp
+o3KaRfEwDubFFqva8FoJ+iujY827C6SrcxPwbDh5RuSOpGrmSynq8fWsuPE3tcdp
+5kPtM8TsdoJ7WpB64g==
+-----END CERTIFICATE-----";
+
+// ---------------------------------------------------------------------------
+// Mock Firebase token creation
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct MockFirebaseClaims {
+    sub: String,
+    email: Option<String>,
+    name: Option<String>,
+    picture: Option<String>,
+    iss: String,
+    aud: String,
+    exp: i64,
+    iat: i64,
+}
+
+fn create_mock_firebase_token(
+    firebase_uid: &str,
+    email: Option<&str>,
+    display_name: Option<&str>,
+    avatar_url: Option<&str>,
+) -> String {
+    let now = Utc::now();
+    let claims = MockFirebaseClaims {
+        sub: firebase_uid.to_string(),
+        email: email.map(String::from),
+        name: display_name.map(String::from),
+        picture: avatar_url.map(String::from),
+        iss: format!("https://securetoken.google.com/{TEST_PROJECT_ID}"),
+        aud: TEST_PROJECT_ID.to_string(),
+        exp: (now + Duration::hours(1)).timestamp(),
+        iat: now.timestamp(),
+    };
+
+    let mut header = Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(TEST_KID.to_string());
+
+    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY.as_bytes())
+        .expect("Failed to create encoding key from test RSA private key");
+
+    encode(&header, &claims, &key).expect("Failed to encode mock Firebase token")
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Ensures schema is created exactly once across all parallel tests.
+static SCHEMA_READY: AtomicBool = AtomicBool::new(false);
+static SCHEMA_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Final database schema (combines all migrations into idempotent statements).
+const SCHEMA_STATEMENTS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT UNIQUE,
+        firebase_uid TEXT NOT NULL UNIQUE,
+        display_name TEXT,
+        avatar_url TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )",
+    "CREATE TABLE IF NOT EXISTS matches (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id),
+        client_id UUID UNIQUE,
+        match_type TEXT NOT NULL DEFAULT 'singles',
+        config JSONB NOT NULL,
+        winner SMALLINT NOT NULL,
+        player1_sets SMALLINT NOT NULL,
+        player2_sets SMALLINT NOT NULL,
+        started_at TIMESTAMPTZ NOT NULL,
+        ended_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )",
+    "CREATE INDEX IF NOT EXISTS idx_matches_user_id ON matches(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_matches_started_at ON matches(started_at)",
+    "CREATE TABLE IF NOT EXISTS match_events (
+        id BIGSERIAL PRIMARY KEY,
+        match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        point_number INT NOT NULL,
+        player SMALLINT NOT NULL,
+        timestamp TIMESTAMPTZ NOT NULL,
+        UNIQUE(match_id, point_number)
+    )",
+    "CREATE INDEX IF NOT EXISTS idx_match_events_match_id ON match_events(match_id)",
+];
+
+async fn ensure_schema(pool: &sqlx::PgPool) {
+    if SCHEMA_READY.load(Ordering::Acquire) {
+        return;
+    }
+    let _guard = SCHEMA_LOCK.lock().unwrap();
+    if SCHEMA_READY.load(Ordering::Relaxed) {
+        return;
+    }
+    // Clean slate
+    sqlx::query("DROP TABLE IF EXISTS match_events, matches, users CASCADE")
+        .execute(pool)
+        .await
+        .expect("Failed to clean database");
+    for sql in SCHEMA_STATEMENTS {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .unwrap_or_else(|e| panic!("Schema setup failed: {e}\nSQL: {sql}"));
+    }
+    SCHEMA_READY.store(true, Ordering::Release);
+}
+
 async fn setup() -> axum::Router {
     dotenvy::dotenv().ok();
-
     let database_url =
         std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for integration tests");
-    let jwt_secret =
-        std::env::var("JWT_SECRET").expect("JWT_SECRET must be set for integration tests");
-
-    let config = AppConfig {
-        jwt_secret,
-        allowed_origins: Vec::new(),
-        apple_bundle_id: "com.tennisscorer.test".to_string(),
-    };
 
     let pool = tennis_scorer_api::db::create_pool(&database_url)
         .await
         .expect("Failed to connect to database");
 
-    // Run migrations manually (files are plain SQL, not sqlx-managed).
-    for sql in [
-        include_str!("../migrations/001_create_users.sql"),
-        include_str!("../migrations/002_create_matches.sql"),
-        include_str!("../migrations/003_create_match_events.sql"),
-        include_str!("../migrations/004_add_apple_auth.sql"),
-    ] {
-        sqlx::query(sql)
-            .execute(&pool)
-            .await
-            .expect("Migration failed");
-    }
+    ensure_schema(&pool).await;
 
-    create_router(pool, &config)
+    let mut certs = HashMap::new();
+    certs.insert(TEST_KID.to_string(), TEST_RSA_CERT.to_string());
+    let verifier = FirebaseTokenVerifier::new_with_certs(TEST_PROJECT_ID.to_string(), certs);
+
+    let state = AppState {
+        pool,
+        firebase_verifier: verifier,
+    };
+
+    let config = AppConfig {
+        firebase_project_id: TEST_PROJECT_ID.to_string(),
+        allowed_origins: Vec::new(),
+    };
+
+    tennis_scorer_api::create_router_with_state(state, &config)
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()
-}
-
-fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
-    Request::builder()
-        .method(method)
-        .uri(uri)
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&body).unwrap()))
-        .unwrap()
 }
 
 fn auth_json_request(method: &str, uri: &str, body: Value, token: &str) -> Request<Body> {
@@ -90,156 +251,111 @@ fn auth_request(method: &str, uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
-/// Register a new user and log in, returning the access token.
-async fn register_and_login(app: &axum::Router, email: &str, password: &str) -> String {
-    app.clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/register",
-            json!({"email": email, "password": password}),
-        ))
-        .await
-        .unwrap();
+/// Create a user via PUT /api/auth/me and return the Firebase token.
+async fn create_user_and_get_token(app: &axum::Router, email: &str) -> String {
+    let firebase_uid = format!("firebase_{}", uuid::Uuid::new_v4());
+    let token = create_mock_firebase_token(&firebase_uid, Some(email), Some("Test User"), None);
 
     let resp = app
         .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/login",
-            json!({"email": email, "password": password}),
-        ))
+        .oneshot(auth_request("PUT", "/api/auth/me", &token))
         .await
         .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = body_json(resp).await;
-    body["access_token"].as_str().unwrap().to_string()
+    token
 }
 
 // ---------------------------------------------------------------------------
-// Auth flow
+// Auth: PUT /api/auth/me
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore]
-async fn test_auth_register_login_refresh() {
+async fn test_auth_me_creates_new_user() {
     let app = setup().await;
-    let email = format!("auth_{}@example.com", uuid::Uuid::new_v4());
+    let firebase_uid = format!("firebase_{}", uuid::Uuid::new_v4());
+    let email = format!("new_{}@example.com", uuid::Uuid::new_v4());
+    let token = create_mock_firebase_token(&firebase_uid, Some(&email), Some("New User"), None);
 
-    // Register
     let resp = app
         .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/register",
-            json!({"email": email, "password": "testpassword123"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED);
-    let body = body_json(resp).await;
-    assert!(body["id"].is_string(), "register should return a user id");
-
-    // Login
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/login",
-            json!({"email": email, "password": "testpassword123"}),
-        ))
+        .oneshot(auth_request("PUT", "/api/auth/me", &token))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert!(body["access_token"].is_string());
-    assert!(body["refresh_token"].is_string());
+    assert!(body["id"].is_string());
+    assert_eq!(body["email"], email);
+    assert_eq!(body["display_name"], "New User");
+    assert!(body["avatar_url"].is_null());
+}
 
-    // Refresh
-    let refresh_token = body["refresh_token"].as_str().unwrap();
+#[tokio::test]
+#[ignore]
+async fn test_auth_me_returns_existing_user() {
+    let app = setup().await;
+    let firebase_uid = format!("firebase_{}", uuid::Uuid::new_v4());
+    let email = format!("existing_{}@example.com", uuid::Uuid::new_v4());
+    let token = create_mock_firebase_token(&firebase_uid, Some(&email), Some("User"), None);
+
+    // First call creates
     let resp = app
         .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/refresh",
-            json!({"refresh_token": refresh_token}),
-        ))
+        .oneshot(auth_request("PUT", "/api/auth/me", &token))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let first_id = body_json(resp).await["id"].as_str().unwrap().to_string();
+
+    // Second call returns same user
+    let resp = app
+        .clone()
+        .oneshot(auth_request("PUT", "/api/auth/me", &token))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let second_id = body_json(resp).await["id"].as_str().unwrap().to_string();
+    assert_eq!(first_id, second_id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_auth_me_updates_profile() {
+    let app = setup().await;
+    let firebase_uid = format!("firebase_{}", uuid::Uuid::new_v4());
+    let email = format!("profile_{}@example.com", uuid::Uuid::new_v4());
+
+    // Create with initial name
+    let token1 = create_mock_firebase_token(&firebase_uid, Some(&email), Some("Old Name"), None);
+    let resp = app
+        .clone()
+        .oneshot(auth_request("PUT", "/api/auth/me", &token1))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(body_json(resp).await["display_name"], "Old Name");
+
+    // Login again with updated name and avatar
+    let token2 = create_mock_firebase_token(
+        &firebase_uid,
+        Some(&email),
+        Some("New Name"),
+        Some("https://example.com/avatar.jpg"),
+    );
+    let resp = app
+        .clone()
+        .oneshot(auth_request("PUT", "/api/auth/me", &token2))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert!(body["access_token"].is_string());
+    assert_eq!(body["display_name"], "New Name");
+    assert_eq!(body["avatar_url"], "https://example.com/avatar.jpg");
 }
 
 // ---------------------------------------------------------------------------
-// Error cases -- duplicate email
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_duplicate_email_returns_conflict() {
-    let app = setup().await;
-    let email = format!("dup_{}@example.com", uuid::Uuid::new_v4());
-
-    // First registration succeeds
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/register",
-            json!({"email": email, "password": "testpassword123"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED);
-
-    // Second registration with same email returns 409 Conflict
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/register",
-            json!({"email": email, "password": "testpassword123"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-}
-
-// ---------------------------------------------------------------------------
-// Error cases -- wrong password
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_wrong_password_returns_unauthorized() {
-    let app = setup().await;
-    let email = format!("wrongpw_{}@example.com", uuid::Uuid::new_v4());
-
-    // Register
-    app.clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/register",
-            json!({"email": email, "password": "testpassword123"}),
-        ))
-        .await
-        .unwrap();
-
-    // Login with wrong password
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/login",
-            json!({"email": email, "password": "wrongpassword"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-}
-
-// ---------------------------------------------------------------------------
-// Error cases -- unauthorized access to protected routes
+// Auth error cases
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -274,6 +390,37 @@ async fn test_unauthorized_access_without_token() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
+#[tokio::test]
+#[ignore]
+async fn test_invalid_firebase_token() {
+    let app = setup().await;
+
+    let resp = app
+        .clone()
+        .oneshot(auth_request("PUT", "/api/auth/me", "not-a-valid-jwt"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_middleware_rejects_unknown_user() {
+    let app = setup().await;
+
+    // Create a valid Firebase token for a user that hasn't called /auth/me
+    let firebase_uid = format!("firebase_{}", uuid::Uuid::new_v4());
+    let token = create_mock_firebase_token(&firebase_uid, Some("unknown@example.com"), None, None);
+
+    // Try accessing a protected endpoint (not /auth/me) without creating user first
+    let resp = app
+        .clone()
+        .oneshot(auth_request("GET", "/api/matches", &token))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
 // ---------------------------------------------------------------------------
 // Match CRUD
 // ---------------------------------------------------------------------------
@@ -283,7 +430,7 @@ async fn test_unauthorized_access_without_token() {
 async fn test_match_create_list_get_delete() {
     let app = setup().await;
     let email = format!("match_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
 
     // Create a match
     let resp = app
@@ -293,7 +440,7 @@ async fn test_match_create_list_get_delete() {
             "/api/matches",
             json!({
                 "match_type": "singles",
-                "config": {"sets_to_win": 2},
+                "config": {"sets_to_win": 2, "tiebreak_points": 7, "final_set_tiebreak": true, "no_ad_scoring": false},
                 "winner": 1,
                 "player1_sets": 2,
                 "player2_sets": 0,
@@ -370,13 +517,13 @@ async fn test_match_create_list_get_delete() {
 async fn test_match_idempotency_with_client_id() {
     let app = setup().await;
     let email = format!("idempotent_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
 
     let client_id = uuid::Uuid::new_v4().to_string();
     let payload = json!({
         "client_id": client_id,
         "match_type": "singles",
-        "config": {},
+        "config": {"sets_to_win": 2, "tiebreak_points": 7, "final_set_tiebreak": true, "no_ad_scoring": false},
         "winner": 1,
         "player1_sets": 2,
         "player2_sets": 1,
@@ -427,7 +574,7 @@ async fn test_match_idempotency_with_client_id() {
 async fn test_stats_summary() {
     let app = setup().await;
     let email = format!("stats_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
 
     // Empty stats
     let resp = app
@@ -450,7 +597,7 @@ async fn test_stats_summary() {
             "/api/matches",
             json!({
                 "match_type": "singles",
-                "config": {},
+                "config": {"sets_to_win": 2, "tiebreak_points": 7, "final_set_tiebreak": true, "no_ad_scoring": false},
                 "winner": 1,
                 "player1_sets": 2,
                 "player2_sets": 0,
@@ -472,7 +619,7 @@ async fn test_stats_summary() {
             "/api/matches",
             json!({
                 "match_type": "singles",
-                "config": {},
+                "config": {"sets_to_win": 2, "tiebreak_points": 7, "final_set_tiebreak": true, "no_ad_scoring": false},
                 "winner": 2,
                 "player1_sets": 0,
                 "player2_sets": 2,
@@ -534,49 +681,9 @@ async fn test_health_check() {
 }
 
 // ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_register_validation_short_password() {
-    let app = setup().await;
-    let email = format!("short_{}@example.com", uuid::Uuid::new_v4());
-
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/register",
-            json!({"email": email, "password": "short"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_register_validation_invalid_email() {
-    let app = setup().await;
-
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/register",
-            json!({"email": "not-an-email", "password": "testpassword123"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-// ---------------------------------------------------------------------------
 // Match analysis endpoints
 // ---------------------------------------------------------------------------
 
-/// Helper: create a match with point events and return its id.
 async fn create_match_with_events(app: &axum::Router, token: &str) -> String {
     let resp = app
         .clone()
@@ -585,7 +692,7 @@ async fn create_match_with_events(app: &axum::Router, token: &str) -> String {
             "/api/matches",
             json!({
                 "match_type": "singles",
-                "config": {"sets_to_win": 2},
+                "config": {"sets_to_win": 2, "tiebreak_points": 7, "final_set_tiebreak": true, "no_ad_scoring": false},
                 "winner": 1,
                 "player1_sets": 2,
                 "player2_sets": 0,
@@ -611,7 +718,7 @@ async fn create_match_with_events(app: &axum::Router, token: &str) -> String {
 async fn test_match_analysis_valid() {
     let app = setup().await;
     let email = format!("analysis_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
     let match_id = create_match_with_events(&app, &token).await;
 
     let resp = app
@@ -625,7 +732,6 @@ async fn test_match_analysis_valid() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    // Should have player1 and player2 stats
     assert!(body["player1"].is_object(), "should have player1 stats");
     assert!(body["player2"].is_object(), "should have player2 stats");
     assert!(body["player1"]["total_points"].is_object());
@@ -636,7 +742,7 @@ async fn test_match_analysis_valid() {
 async fn test_match_momentum_valid() {
     let app = setup().await;
     let email = format!("momentum_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
     let match_id = create_match_with_events(&app, &token).await;
 
     let resp = app
@@ -662,7 +768,7 @@ async fn test_match_momentum_valid() {
 async fn test_match_pace_valid() {
     let app = setup().await;
     let email = format!("pace_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
     let match_id = create_match_with_events(&app, &token).await;
 
     let resp = app
@@ -677,11 +783,11 @@ async fn test_match_pace_valid() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert!(
-        body["point_intervals_secs"].is_array(),
+        body["point_intervals"].is_array(),
         "should have point intervals"
     );
     assert!(
-        body["total_duration_secs"].is_number(),
+        body["total_duration_seconds"].is_number(),
         "should have total duration"
     );
 }
@@ -691,7 +797,7 @@ async fn test_match_pace_valid() {
 async fn test_match_analysis_not_found() {
     let app = setup().await;
     let email = format!("anf_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
 
     let fake_id = uuid::Uuid::new_v4();
     let resp = app
@@ -712,8 +818,8 @@ async fn test_match_analysis_not_owned() {
     let app = setup().await;
     let email_a = format!("owner_{}@example.com", uuid::Uuid::new_v4());
     let email_b = format!("other_{}@example.com", uuid::Uuid::new_v4());
-    let token_a = register_and_login(&app, &email_a, "testpassword123").await;
-    let token_b = register_and_login(&app, &email_b, "testpassword123").await;
+    let token_a = create_user_and_get_token(&app, &email_a).await;
+    let token_b = create_user_and_get_token(&app, &email_b).await;
 
     let match_id = create_match_with_events(&app, &token_a).await;
 
@@ -741,7 +847,7 @@ async fn test_match_analysis_not_owned() {
 async fn test_match_analysis_no_events() {
     let app = setup().await;
     let email = format!("noevents_{}@example.com", uuid::Uuid::new_v4());
-    let token = register_and_login(&app, &email, "testpassword123").await;
+    let token = create_user_and_get_token(&app, &email).await;
 
     // Create match with no events
     let resp = app
@@ -751,7 +857,7 @@ async fn test_match_analysis_no_events() {
             "/api/matches",
             json!({
                 "match_type": "singles",
-                "config": {},
+                "config": {"sets_to_win": 2, "tiebreak_points": 7, "final_set_tiebreak": true, "no_ad_scoring": false},
                 "winner": 1,
                 "player1_sets": 2,
                 "player2_sets": 0,
@@ -778,7 +884,7 @@ async fn test_match_analysis_no_events() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert_eq!(body["player1"]["total_points"]["total"], 0);
+    assert_eq!(body["player1"]["total_points"]["total_points"], 0);
 
     // Momentum should return 200 with empty arrays
     let resp = app
@@ -806,11 +912,11 @@ async fn test_match_analysis_no_events() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert_eq!(body["total_duration_secs"], 0.0);
+    assert_eq!(body["total_duration_seconds"], 0.0);
 }
 
 // ---------------------------------------------------------------------------
-// Cross-user isolation -- one user cannot see another user's matches
+// Cross-user isolation
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -820,8 +926,8 @@ async fn test_cross_user_isolation() {
 
     let email_a = format!("user_a_{}@example.com", uuid::Uuid::new_v4());
     let email_b = format!("user_b_{}@example.com", uuid::Uuid::new_v4());
-    let token_a = register_and_login(&app, &email_a, "testpassword123").await;
-    let token_b = register_and_login(&app, &email_b, "testpassword123").await;
+    let token_a = create_user_and_get_token(&app, &email_a).await;
+    let token_b = create_user_and_get_token(&app, &email_b).await;
 
     // User A creates a match
     let resp = app
@@ -831,7 +937,7 @@ async fn test_cross_user_isolation() {
             "/api/matches",
             json!({
                 "match_type": "singles",
-                "config": {},
+                "config": {"sets_to_win": 2, "tiebreak_points": 7, "final_set_tiebreak": true, "no_ad_scoring": false},
                 "winner": 1,
                 "player1_sets": 2,
                 "player2_sets": 0,
@@ -878,56 +984,4 @@ async fn test_cross_user_isolation() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-// ---------------------------------------------------------------------------
-// Apple auth -- invalid token
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_apple_auth_invalid_token() {
-    let app = setup().await;
-
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/apple",
-            json!({"identity_token": "not-a-valid-jwt"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_apple_auth_empty_token() {
-    let app = setup().await;
-
-    let resp = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/auth/apple",
-            json!({"identity_token": ""}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_apple_auth_missing_field() {
-    let app = setup().await;
-
-    let resp = app
-        .clone()
-        .oneshot(json_request("POST", "/api/auth/apple", json!({})))
-        .await
-        .unwrap();
-    // Missing required field → 422
-    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }

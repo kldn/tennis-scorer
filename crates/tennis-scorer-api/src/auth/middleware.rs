@@ -1,8 +1,9 @@
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+use tracing::error;
 use uuid::Uuid;
 
-use super::jwt;
+use super::firebase::FirebaseClaims;
 use crate::AppState;
 use crate::error::AppError;
 
@@ -18,25 +19,24 @@ impl FromRequestParts<AppState> for AuthUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let auth_header = parts
-            .headers
-            .get("Authorization")
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| AppError::Unauthorized("Missing authorization header".to_string()))?;
+        // Verify Firebase ID token
+        let claims = FirebaseClaims::from_request_parts(parts, state).await?;
 
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or_else(|| AppError::Unauthorized("Invalid authorization format".to_string()))?;
+        // Look up user by firebase_uid
+        let user_id: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM users WHERE firebase_uid = $1")
+                .bind(claims.firebase_uid())
+                .fetch_optional(&state.pool)
+                .await
+                .map_err(|e| {
+                    error!(error = %e, firebase_uid = claims.firebase_uid(), "Failed to look up user");
+                    AppError::Internal("Database error".to_string())
+                })?;
 
-        let claims = jwt::validate_token(token, &state.jwt_secret)
-            .map_err(|_| AppError::Unauthorized("Invalid or expired token".to_string()))?;
+        let user_id = user_id.ok_or_else(|| {
+            AppError::Unauthorized("User not found. Call PUT /api/auth/me first.".to_string())
+        })?;
 
-        if claims.token_type != "access" {
-            return Err(AppError::Unauthorized("Invalid token type".to_string()));
-        }
-
-        Ok(AuthUser {
-            user_id: claims.sub,
-        })
+        Ok(AuthUser { user_id })
     }
 }

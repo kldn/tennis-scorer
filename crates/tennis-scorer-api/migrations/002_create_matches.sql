@@ -12,5 +12,5 @@ CREATE TABLE IF NOT EXISTS matches (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_matches_user_id ON matches(user_id);
-CREATE INDEX idx_matches_started_at ON matches(started_at);
+CREATE INDEX IF NOT EXISTS idx_matches_user_id ON matches(user_id);
+CREATE INDEX IF NOT EXISTS idx_matches_started_at ON matches(started_at);

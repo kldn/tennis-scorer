@@ -9,7 +9,8 @@ async fn main() {
     dotenvy::dotenv().ok();
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let firebase_project_id =
+        std::env::var("FIREBASE_PROJECT_ID").expect("FIREBASE_PROJECT_ID must be set");
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let port = std::env::var("PORT").unwrap_or_else(|_| "8000".into());
 
@@ -28,13 +29,9 @@ async fn main() {
         .map(|s| s.split(',').map(|o| o.trim().to_string()).collect())
         .unwrap_or_default();
 
-    let apple_bundle_id =
-        std::env::var("APPLE_BUNDLE_ID").unwrap_or_else(|_| "com.tennisscorer".into());
-
     let config = AppConfig {
-        jwt_secret,
+        firebase_project_id,
         allowed_origins,
-        apple_bundle_id,
     };
     let app = tennis_scorer_api::create_router(pool, &config);
 
