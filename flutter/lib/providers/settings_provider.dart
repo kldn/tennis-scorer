@@ -36,6 +36,7 @@ class NotificationSettings {
 
 class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
   final ApiClient _apiClient;
+  bool _hasLocalEdits = false;
 
   NotificationSettingsNotifier(this._apiClient)
       : super(const NotificationSettings()) {
@@ -45,7 +46,7 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
   Future<void> _loadFromServer() async {
     try {
       final json = await _apiClient.getNotificationSettings();
-      if (!mounted) return;
+      if (!mounted || _hasLocalEdits) return;
       state = NotificationSettings(
         friendRequests: json['friend_requests'] as bool? ?? true,
         matchResults: json['match_results'] as bool? ?? true,
@@ -61,6 +62,7 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettings> {
     bool? matchResults,
     bool? matchClaims,
   }) async {
+    _hasLocalEdits = true;
     final previous = state;
     final updated = state.copyWith(
       friendRequests: friendRequests,

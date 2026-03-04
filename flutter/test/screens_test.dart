@@ -104,14 +104,13 @@ void main() {
       expect(find.text('確認登出'), findsNothing);
     });
 
-    testWidgets('toggles notification settings', (tester) async {
+    testWidgets('shows three notification switches', (tester) async {
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: SettingsScreen()),
         ),
       );
 
-      // Find switch for 好友請求 and toggle it
       final switches = find.byType(Switch);
       expect(switches, findsNWidgets(3));
     });

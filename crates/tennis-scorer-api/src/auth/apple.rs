@@ -82,23 +82,23 @@ impl AppleTokenVerifier {
     }
 
     async fn get_keys(&self, force_refresh: bool) -> Result<Vec<Jwk>, AppError> {
-        if !force_refresh {
+        {
             let cached = self.cached_keys.read().await;
-            if let Some(entry) = cached.as_ref() {
-                if entry.fetched_at.elapsed() < JWKS_CACHE_TTL {
-                    return Ok(entry.keys.clone());
-                }
+            if !force_refresh
+                && let Some(entry) = cached.as_ref()
+                && entry.fetched_at.elapsed() < JWKS_CACHE_TTL
+            {
+                return Ok(entry.keys.clone());
             }
         }
 
         // Double-checked locking: re-check under write lock to avoid parallel fetches
         let mut cache = self.cached_keys.write().await;
-        if !force_refresh {
-            if let Some(entry) = cache.as_ref() {
-                if entry.fetched_at.elapsed() < JWKS_CACHE_TTL {
-                    return Ok(entry.keys.clone());
-                }
-            }
+        if !force_refresh
+            && let Some(entry) = cache.as_ref()
+            && entry.fetched_at.elapsed() < JWKS_CACHE_TTL
+        {
+            return Ok(entry.keys.clone());
         }
 
         let keys = self.fetch_keys().await?;
@@ -125,24 +125,20 @@ impl AppleTokenVerifier {
 
     fn validate_nonce(
         claims: &AppleIdTokenClaims,
-        expected_nonce: Option<&str>,
+        expected_nonce: &str,
     ) -> Result<(), AppError> {
-        if let Some(expected) = expected_nonce {
-            match claims.nonce.as_deref() {
-                Some(actual) if actual == expected => Ok(()),
-                _ => Err(AppError::Unauthorized(
-                    "Nonce mismatch in Apple identity token".to_string(),
-                )),
-            }
-        } else {
-            Ok(())
+        match claims.nonce.as_deref() {
+            Some(actual) if actual == expected_nonce => Ok(()),
+            _ => Err(AppError::Unauthorized(
+                "Nonce mismatch in Apple identity token".to_string(),
+            )),
         }
     }
 
     pub async fn verify(
         &self,
         identity_token: &str,
-        expected_nonce: Option<&str>,
+        expected_nonce: &str,
     ) -> Result<AppleIdTokenClaims, AppError> {
         let header = decode_header(identity_token)
             .map_err(|_| AppError::Unauthorized("Invalid Apple identity token".to_string()))?;

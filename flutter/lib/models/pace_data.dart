@@ -70,8 +70,9 @@ class PaceData {
   String get averageIntervalDisplay {
     final seconds = averagePointIntervalSeconds;
     if (seconds < 60) return '${seconds.toStringAsFixed(1)}s';
-    final mins = (seconds / 60).floor();
-    final secs = (seconds % 60).toStringAsFixed(0);
+    final roundedTotalSeconds = seconds.round();
+    final mins = roundedTotalSeconds ~/ 60;
+    final secs = roundedTotalSeconds % 60;
     return '${mins}m ${secs}s';
   }
 

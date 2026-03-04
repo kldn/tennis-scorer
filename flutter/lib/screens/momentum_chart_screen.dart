@@ -301,10 +301,12 @@ class _PaceSection extends StatelessWidget {
                 Text('各盤時長', style: theme.textTheme.titleSmall),
                 const SizedBox(height: 4),
                 ...pace.perSetDurations.map((sd) {
-                  final mins = (sd.durationSeconds / 60).floor();
+                  final totalSecs = sd.durationSeconds.round();
+                  final mins = totalSecs ~/ 60;
+                  final secs = totalSecs % 60;
                   return _PaceRow(
                     label: '第 ${sd.setNumber} 盤',
-                    value: '${mins}m',
+                    value: '${mins}m ${secs}s',
                   );
                 }),
               ],

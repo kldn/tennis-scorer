@@ -23,6 +23,7 @@ class ApiClient {
 
   String? _cachedAccessToken;
   Future<bool>? _refreshFuture;
+  int _tokenEpoch = 0;
 
   ApiClient({
     required this.baseUrl,
@@ -37,10 +38,10 @@ class ApiClient {
 
   // MARK: - Auth
 
-  Future<TokenPair> loginWithApple(String identityToken) async {
+  Future<TokenPair> loginWithApple(String identityToken, {required String nonce}) async {
     final response = await _post(
       '/auth/apple',
-      body: {'identity_token': identityToken},
+      body: {'identity_token': identityToken, 'nonce': nonce},
       authenticated: false,
     );
     final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -117,6 +118,7 @@ class ApiClient {
 
   void clearTokenCache() {
     _cachedAccessToken = null;
+    _tokenEpoch++;
   }
 
   // MARK: - Internal
@@ -202,16 +204,19 @@ class ApiClient {
   }
 
   Future<bool> _doRefresh() async {
+    final epoch = _tokenEpoch;
     final token = await _storage.read(key: _refreshTokenKey);
     if (token == null) return false;
 
     try {
       final tokens = await refreshToken(token);
-      _cachedAccessToken = tokens.accessToken;
+      if (_tokenEpoch != epoch) return false;
       await Future.wait([
         _storage.write(key: _accessTokenKey, value: tokens.accessToken),
         _storage.write(key: _refreshTokenKey, value: tokens.refreshToken),
       ]);
+      if (_tokenEpoch != epoch) return false;
+      _cachedAccessToken = tokens.accessToken;
       return true;
     } on ApiException catch (e) {
       debugPrint('Token refresh failed: $e');

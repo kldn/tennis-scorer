@@ -145,15 +145,21 @@ pub async fn refresh(
 #[derive(Deserialize)]
 pub struct AppleAuthRequest {
     pub identity_token: String,
+    pub nonce: String,
 }
 
 pub async fn apple_auth(
     State(state): State<AppState>,
     Json(req): Json<AppleAuthRequest>,
 ) -> Result<Json<TokenResponse>, AppError> {
+    // The client sends the raw nonce; Apple's identity token contains the SHA256 hash.
+    // Hash the raw nonce and compare with the token's nonce claim.
+    use sha2::{Digest, Sha256};
+    let hashed_nonce = hex::encode(Sha256::digest(req.nonce.as_bytes()));
+
     let apple_claims = state
         .apple_verifier
-        .verify(&req.identity_token, None)
+        .verify(&req.identity_token, &hashed_nonce)
         .await?;
 
     // Find or create user by apple_user_id

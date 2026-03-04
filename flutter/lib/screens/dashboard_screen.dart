@@ -184,14 +184,12 @@ class _RecentFormCard extends StatelessWidget {
           children: [
             Text('近期戰績', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.start,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: summary.recentForm.map((result) {
                 final isWin = result == 'W';
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: WinLossAvatar(isWin: isWin, radius: 16),
-                );
+                return WinLossAvatar(isWin: isWin, radius: 16);
               }).toList(),
             ),
           ],
