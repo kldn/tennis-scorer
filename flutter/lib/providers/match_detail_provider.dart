@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/match_analysis.dart';
 import '../models/match_model.dart';
-import '../services/match_repository.dart';
 import '../services/stats_repository.dart';
 import 'auth_provider.dart';
 import 'match_list_provider.dart';
@@ -22,13 +21,13 @@ final matchDetailProvider = FutureProvider.family<MatchDetailState, String>((ref
   final matchRepo = ref.watch(matchRepositoryProvider);
   final statsRepo = ref.watch(statsRepositoryProvider);
 
-  final results = await Future.wait([
+  final (match, analysis) = await (
     matchRepo.getMatch(matchId),
     statsRepo.getMatchAnalysis(matchId),
-  ]);
+  ).wait;
 
   return MatchDetailState(
-    match: results[0] as MatchModel,
-    analysis: results[1] as MatchAnalysis,
+    match: match,
+    analysis: analysis,
   );
 });

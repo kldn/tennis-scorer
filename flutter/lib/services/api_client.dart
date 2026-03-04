@@ -21,7 +21,9 @@ class ApiClient {
   static const _refreshTokenKey = 'refresh_token';
   static const _requestTimeout = Duration(seconds: 15);
 
+  String? _cachedAccessToken;
   Future<bool>? _refreshFuture;
+  int _tokenEpoch = 0;
 
   ApiClient({
     required this.baseUrl,
@@ -36,10 +38,10 @@ class ApiClient {
 
   // MARK: - Auth
 
-  Future<TokenPair> loginWithApple(String identityToken) async {
+  Future<TokenPair> loginWithApple(String identityToken, {required String nonce}) async {
     final response = await _post(
       '/auth/apple',
-      body: {'identity_token': identityToken},
+      body: {'identity_token': identityToken, 'nonce': nonce},
       authenticated: false,
     );
     final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -87,11 +89,43 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> getMatchPace(String matchId) async {
+    final response = await _get('/stats/match/$matchId/pace');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getStatsSummary() async {
+    final response = await _get('/stats/summary');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  // MARK: - Notifications
+
+  Future<Map<String, dynamic>> getNotificationSettings() async {
+    final response = await _get('/notifications/settings');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<void> putNotificationSettings(Map<String, dynamic> settings) async {
+    await _put('/notifications/settings', body: settings);
+  }
+
+  // MARK: - Token Cache
+
+  Future<String?> _getAccessToken() async {
+    return _cachedAccessToken ??= await _storage.read(key: _accessTokenKey);
+  }
+
+  void clearTokenCache() {
+    _cachedAccessToken = null;
+    _tokenEpoch++;
+  }
+
   // MARK: - Internal
 
   Future<http.Response> _get(String path) async {
     return _authenticatedRequest(() async {
-      final token = await _storage.read(key: _accessTokenKey);
+      final token = await _getAccessToken();
       return _httpClient
           .get(Uri.parse('$baseUrl$path'), headers: _headers(token))
           .timeout(_requestTimeout);
@@ -116,9 +150,25 @@ class ApiClient {
     }
 
     return _authenticatedRequest(() async {
-      final token = await _storage.read(key: _accessTokenKey);
+      final token = await _getAccessToken();
       return _httpClient
           .post(
+            Uri.parse('$baseUrl$path'),
+            headers: _headers(token),
+            body: jsonEncode(body),
+          )
+          .timeout(_requestTimeout);
+    });
+  }
+
+  Future<http.Response> _put(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    return _authenticatedRequest(() async {
+      final token = await _getAccessToken();
+      return _httpClient
+          .put(
             Uri.parse('$baseUrl$path'),
             headers: _headers(token),
             body: jsonEncode(body),
@@ -154,21 +204,30 @@ class ApiClient {
   }
 
   Future<bool> _doRefresh() async {
+    final epoch = _tokenEpoch;
     final token = await _storage.read(key: _refreshTokenKey);
     if (token == null) return false;
 
     try {
       final tokens = await refreshToken(token);
-      await _storage.write(key: _accessTokenKey, value: tokens.accessToken);
-      await _storage.write(key: _refreshTokenKey, value: tokens.refreshToken);
+      if (_tokenEpoch != epoch) return false;
+      await Future.wait([
+        _storage.write(key: _accessTokenKey, value: tokens.accessToken),
+        _storage.write(key: _refreshTokenKey, value: tokens.refreshToken),
+      ]);
+      if (_tokenEpoch != epoch) return false;
+      _cachedAccessToken = tokens.accessToken;
       return true;
     } on ApiException catch (e) {
       debugPrint('Token refresh failed: $e');
       if (e.statusCode == 401) {
         final current = await _storage.read(key: _refreshTokenKey);
         if (current == token) {
-          await _storage.delete(key: _accessTokenKey);
-          await _storage.delete(key: _refreshTokenKey);
+          _cachedAccessToken = null;
+          await Future.wait([
+            _storage.delete(key: _accessTokenKey),
+            _storage.delete(key: _refreshTokenKey),
+          ]);
         }
       }
       return false;

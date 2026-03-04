@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../models/match_analysis.dart';
 import '../models/match_model.dart';
 import '../providers/match_detail_provider.dart';
+import '../utils/format_utils.dart';
 
 class MatchDetailScreen extends ConsumerWidget {
   final String matchId;
@@ -190,16 +190,15 @@ class _DetailContent extends StatelessWidget {
 }
 
 class _MatchHeader extends StatelessWidget {
+  static final _dateFormat = DateFormat('yyyy/MM/dd HH:mm');
+
   final MatchModel match;
 
   const _MatchHeader({required this.match});
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('yyyy/MM/dd HH:mm');
-    final duration = match.duration;
-    final durationStr =
-        '${duration.inHours}h ${duration.inMinutes.remainder(60)}m';
+    final durationStr = formatDuration(match.duration);
 
     return Card(
       child: Padding(
@@ -226,7 +225,7 @@ class _MatchHeader extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              dateFormat.format(match.startedAt.toLocal()),
+              _dateFormat.format(match.startedAt.toLocal()),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             Text(

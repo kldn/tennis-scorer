@@ -93,7 +93,7 @@ pub async fn login(
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<TokenResponse>, AppError> {
     // Find user
-    let user: Option<(uuid::Uuid, String)> =
+    let user: Option<(uuid::Uuid, Option<String>)> =
         sqlx::query_as("SELECT id, password_hash FROM users WHERE email = $1")
             .bind(&req.email)
             .fetch_optional(&state.pool)
@@ -101,6 +101,10 @@ pub async fn login(
 
     let (user_id, stored_hash) =
         user.ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
+
+    // Apple-only accounts have no password_hash; reject with same error to avoid user enumeration
+    let stored_hash =
+        stored_hash.ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
 
     // Verify password
     let parsed_hash = PasswordHash::new(&stored_hash)
@@ -141,13 +145,22 @@ pub async fn refresh(
 #[derive(Deserialize)]
 pub struct AppleAuthRequest {
     pub identity_token: String,
+    pub nonce: String,
 }
 
 pub async fn apple_auth(
     State(state): State<AppState>,
     Json(req): Json<AppleAuthRequest>,
 ) -> Result<Json<TokenResponse>, AppError> {
-    let apple_claims = state.apple_verifier.verify(&req.identity_token).await?;
+    // The client sends the raw nonce; Apple's identity token contains the SHA256 hash.
+    // Hash the raw nonce and compare with the token's nonce claim.
+    use sha2::{Digest, Sha256};
+    let hashed_nonce = hex::encode(Sha256::digest(req.nonce.as_bytes()));
+
+    let apple_claims = state
+        .apple_verifier
+        .verify(&req.identity_token, &hashed_nonce)
+        .await?;
 
     // Find or create user by apple_user_id
     let user_id: uuid::Uuid =

@@ -50,15 +50,19 @@ class MatchListNotifier extends StateNotifier<MatchListState> {
     loadMatches();
   }
 
-  Future<void> loadMatches() async {
-    state = state.copyWith(isLoading: true, error: null);
+  Future<void> loadMatches() => _fetch(showLoading: true);
+
+  Future<void> _fetch({bool showLoading = false}) async {
+    if (showLoading) state = state.copyWith(isLoading: true, error: null);
     try {
       final response = await _repository.getMatches(limit: _pageSize, offset: 0);
+      if (!mounted) return;
       state = MatchListState(
         matches: response.matches,
         total: response.total,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
@@ -72,27 +76,19 @@ class MatchListNotifier extends StateNotifier<MatchListState> {
         limit: _pageSize,
         offset: state.matches.length,
       );
+      if (!mounted) return;
       state = state.copyWith(
         matches: [...state.matches, ...response.matches],
         total: response.total,
         isLoadingMore: false,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoadingMore: false, error: e.toString());
     }
   }
 
-  Future<void> refresh() async {
-    try {
-      final response = await _repository.getMatches(limit: _pageSize, offset: 0);
-      state = MatchListState(
-        matches: response.matches,
-        total: response.total,
-      );
-    } catch (e) {
-      state = state.copyWith(error: e.toString());
-    }
-  }
+  Future<void> refresh() => _fetch();
 }
 
 final matchListProvider =
